@@ -1,0 +1,4 @@
+interface:
+  display_name: "Keshig 训练系统总控与迁移助手"
+  short_description: "从零建立并维护增肌、减脂或力量训练文件系统"
+  default_prompt: "使用 $training-system 帮我从零建立个人健身系统：先引导建档和动作重量校准，再制作计划与后续复盘流程。"

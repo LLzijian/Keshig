@@ -1,0 +1,4 @@
+interface:
+  display_name: "Keshig—力量训练周期规划"
+  short_description: "制定八至十二周力量周期并输出带渐进曲线的周期计划书"
+  default_prompt: "使用 $strength-cycle-planner 为我的训练主项制定完整的8至12周周期，并输出带强度与容量渐进曲线的 Markdown 周期计划书。"

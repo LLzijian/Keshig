@@ -1,0 +1,37 @@
+{
+  "name": "keshig",
+  "display_name": "Keshig（怯薛）",
+  "version": "0.3.0",
+  "license": "MIT",
+  "language": "zh-CN",
+  "description": "健身与饮食的操作系统：训练方法、营养口径、设备数据、记录结构；交互全部在 Agent 对话中完成",
+  "skills": [
+    { "name": "training-system", "path": "skills/training-system", "standalone": true },
+    { "name": "fitness-plan", "path": "skills/fitness-plan", "standalone": true },
+    { "name": "strength-cycle-planner", "path": "skills/strength-cycle-planner", "standalone": true },
+    { "name": "strength-training-review", "path": "skills/strength-training-review", "standalone": true },
+    { "name": "training-return", "path": "skills/training-return", "standalone": true },
+    { "name": "nutrition-system", "path": "skills/nutrition-system", "standalone": true },
+    { "name": "training-expert-library", "path": "skills/training-expert-library", "standalone": true },
+    { "name": "expert-tanchengyi", "path": "skills/expert-tanchengyi", "standalone": true },
+    { "name": "video-learning", "path": "skills/video-learning", "standalone": true },
+    { "name": "douyin-question-distiller", "path": "skills/douyin-question-distiller", "standalone": true }
+  ],
+  "knowledge": [
+    "knowledge/00-knowledge-map.md",
+    "knowledge/01-safety-and-scope.md",
+    "knowledge/02-program-design.md",
+    "knowledge/03-progression-and-cycle.md",
+    "knowledge/04-interruption-and-return.md",
+    "knowledge/05-training-review.md",
+    "knowledge/06-source-register.md",
+    "knowledge/evidence-base.md"
+  ],
+  "device": {
+    "entry": "device/vitaldock_client.py",
+    "mode": "read_only_subprocess",
+    "upstream_env": "VITALDOCK_HOME",
+    "upstream_discovery": "env VITALDOCK_HOME；未设置时探测仓库同级目录 vitaldock/、VitalDock/、BioDeviceData/"
+  },
+  "schema": ["schema/health.sql", "schema/device.sql"]
+}

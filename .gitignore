@@ -1,0 +1,35 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+node_modules/
+.DS_Store
+Thumbs.db
+# 本地产物
+*-output/
+data/
+*.log
+
+# 密钥与凭据（任何目录）
+.env
+.env.*
+*.key
+*.pem
+*.secret
+*secret*.json
+*credential*.json
+!*.example.json
+cloudbase-config.json
+
+# 个人训练数据落点（永不入库；正常应放在仓库外的系统根目录，这里兜底）
+系统/
+健身知识库/
+profiles/
+plans/
+reviews/
+handoffs/
+模板/
+健身工作台*.html
+*健身计划*.html
+*-training-profile*.md
+*KESHIG_HANDOFF*.json
