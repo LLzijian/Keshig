@@ -9,6 +9,12 @@ import distill_report as report
 
 
 class ReportChecks(unittest.TestCase):
+    def test_private_report_cannot_be_created_in_source(self):
+        target = Path(__file__).resolve().parents[3] / "docs/private-report.md"
+        with self.assertRaisesRegex(ValueError, "outside"):
+            report.init(Path("nonexistent-packet"), target)
+        self.assertFalse(target.exists())
+
     def test_report_requires_content_current_source_and_valid_time(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

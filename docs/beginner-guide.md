@@ -22,9 +22,9 @@
 1. 一台 Windows、macOS 或 Linux 电脑；
 2. 一个能读取和修改本地文件的 AI Agent，例如 Claude Code、Codex，或支持 Agent Skill 的兼容工具；
 3. Python 3.10 或更新版本；
-4. 一个准备存放个人训练系统的空文件夹，例如在「文档」中新建「我的健身系统」。
+4. 一个准备存放个人训练系统的空文件夹，例如在「文档」中新建「我的健身系统」。它必须位于下载的 Keshig 源码和 Agent 技能目录之外。
 
-可选：如果你想把华为手环的睡眠、静息心率、HRV、步数和运动记录接进来，还需要上游 VitalDock 与 Intervals.icu 的 API key。不配置不影响训练和营养系统。
+可选：设备接入需要 Python 3.11+、可连接华为的 Intervals.icu 账号和个人 API key。Agent 会通过 Keshig 准备固定版本的 VitalDock，不需要你寻找第二份源码；字段以实际返回为准，不保证每日 HRV。不配置不影响训练和营养系统。
 
 不知道电脑有没有 Python，可以把这句话交给 Agent：
 
@@ -47,7 +47,7 @@ Agent 应完成：
 3. 核对安装输出里的 `KESHIG_FITNESS_INSTALL: PASS` 与 `KESHIG_FITNESS_VERIFY: PASS`；
 4. 明确告诉你安装是否成功，而不是只说「应该可以」。
 
-安装器会把 Skill 放进对应 Agent 的 `skills/` 目录，把安装记录放在 `.fitness/`，不会改你的个人资料。
+安装器会把 Skill 放进对应 Agent 的 `skills/` 目录，把安装记录放在 `.fitness/`。Codex 默认使用 `~/.agents/skills`，已有共享入口联接会保留；不会改你的个人资料。
 
 ## 四、开始建立我的健身系统
 
@@ -95,11 +95,11 @@ Agent 应完成：
 
 要点：
 
-- VitalDock 是一个独立的上游项目，Keshig **不复制**它的源码，也不写它的目录，只以子进程读取它的输出；
+- Agent 按[完整接入流程](../skills/training-system/references/device-setup.md)准备固定版本，带你完成注册、华为连接、本机保存 key 和分步验证；
 - API key 保存在你自己的电脑和账号里，**不要**发到公开仓库、聊天记录或截图里；
-- 上游路径用环境变量 `VITALDOCK_HOME` 指定；Agent 也可以探测仓库同级目录下的 `vitaldock/`、`VitalDock/`、`BioDeviceData/`；
+- 程序环境放在个人系统内；开发者可显式使用 `VITALDOCK_HOME`，普通用户无需填写上游源码路径；
 - 设备数据和你的手记会**分表保存、并排对照**，不会自动合并；
-- 当天没有记录就是「还没同步」，不会写成 0。
+- 没有记录可能是尚未同步、日期范围不对或确实没有可用数据；Agent 会分别验证，不会写成 0。
 
 不想配置就跳过，训练、复盘和营养系统完全不受影响。
 
@@ -218,7 +218,7 @@ Agent 会带你用较轻重量试做，并根据以下反馈找到起始重量�
 
 ### 6. 设备数据查不到
 
-先让 Agent 运行 `python device/vitaldock_client.py selftest`，确认上游路径；再运行 `check --day <日期>` 看退出码和错误体。认证失败、限流、未授权都是上游原样透传的错误，不会伪造数据。
+让 Agent 使用安装后的 `training-system/scripts/vitaldock_client.py`，先运行 `selftest --root <个人系统目录>`，再运行 `onboard --root <个人系统目录>`。它分别检查环境、账号、活动与恢复指标，并给出当前失败步骤的处理办法。密钥重新输入必须由本人在本机终端完成；不重新建档或覆盖训练记录。
 
 ## 十一、安全边界
 
@@ -228,7 +228,7 @@ Agent 会带你用较轻重量试做，并根据以下反馈找到起始重量�
 
 遇到伤病、用药、异常体征，Agent 只会说「这要医生看」，不会诊断、开药或给出替代治疗方案。
 
-个人数据只保存在你自己的电脑上。仓库不收集、不上传、不发布任何个人资料；API key、token 和照片也不应进入公开仓库或公开对话。
+个人记录保存到你指定的本机目录，Keshig 不提供集中收集服务。设备链路经过华为与 Intervals.icu；使用云端 Agent 时，对话与工具结果可能交给对应服务处理。API key、token 和私人照片不应进入公开仓库或公开对话。
 
 ## 十二、只记住这三句话
 

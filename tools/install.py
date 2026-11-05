@@ -44,14 +44,20 @@ class InstallFailure(RuntimeError):
 
 
 def default_agent_root(platform: str) -> Path:
+    shared = Path.home() / ".agents"
     if platform == "codex":
         configured = os.environ.get("CODEX_HOME")
-        return Path(configured).expanduser() if configured else Path.home() / ".codex"
-    if platform == "claude":
-        return Path.home() / ".claude"
-    if platform == "agents":
-        return Path.home() / ".agents"
-    raise ValueError(f"Unsupported platform: {platform}")
+        root = Path(configured).expanduser() if configured else shared
+    elif platform == "claude":
+        root = Path.home() / ".claude"
+    elif platform == "agents":
+        root = shared
+    else:
+        raise ValueError(f"Unsupported platform: {platform}")
+    # A known shared entry is resolved once; arbitrary redirected targets remain forbidden.
+    if is_reparse_point(root / "skills") and (root / "skills").resolve() == (shared / "skills").resolve():
+        return shared
+    return root
 
 
 def verify_source(name: str) -> Path:
@@ -373,7 +379,7 @@ def write_install_state(agent_root: Path, state: dict[str, object]) -> Path:
 
 
 def selected_skills(args: argparse.Namespace, parser: argparse.ArgumentParser) -> list[str]:
-    requested = list(SKILLS) if args.all else list(dict.fromkeys(args.skill or []))
+    requested = list(SKILLS) if args.all or not args.skill else list(dict.fromkeys(args.skill))
     if args.verify and not requested:
         requested = list(SKILLS)
     if not requested:

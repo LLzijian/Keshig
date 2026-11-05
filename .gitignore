@@ -8,7 +8,24 @@ Thumbs.db
 # 本地产物
 *-output/
 data/
+runtime/
+release-output/
 *.log
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.sqlite3-*
+*.jpg
+*.jpeg
+*.png
+*.heic
+*.mp4
+*.mov
+*.wav
+*.mp3
+*.zip
 
 # 密钥与凭据（任何目录）
 .env
@@ -23,6 +40,7 @@ cloudbase-config.json
 
 # 个人训练数据落点（永不入库；正常应放在仓库外的系统根目录，这里兜底）
 系统/
+个人训练系统/
 健身知识库/
 profiles/
 plans/

@@ -20,6 +20,8 @@ python tools/upgrade.py --root <用户系统目录> --platform codex --apply
 
 Claude Code 用 `--platform claude`，其他兼容 Agent 用 `agents`；需要指定安装位置时传 `--agent-root`。
 
+Codex 默认使用共享的 `~/.agents/skills`。已有指向该主目录的 Codex/Claude 入口联接会保留；自定义 `CODEX_HOME` 仍有效，任意其他目录联接仍拒绝安装。0.3.1 开始要求个人系统位于源码和技能目录之外；发现旧数据位于这些目录时先保留原件，制定单独的迁移方案，不自动移动或删除。
+
 ## 升级会做什么
 
 1. 对系统目录运行 `validate`，先确认配置与目录结构可迁移；

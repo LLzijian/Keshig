@@ -49,6 +49,15 @@ def stamp(seconds: float) -> str:
 
 
 def init(packet: Path, out: Path) -> None:
+    target = out.expanduser().resolve()
+    skills = Path(__file__).resolve().parents[2]
+    if target == skills or skills in target.parents or any(
+        (parent / "keshig.manifest.json").is_file() or (parent / "SKILL.md").is_file()
+        or parent.name.casefold() == "skills" and (
+            parent.parent.name in {".agents", ".codex", ".claude"} or next(parent.glob("*/SKILL.md"), None) is not None)
+        for parent in (target, *target.parents)
+    ):
+        raise ValueError("Private reports must be outside the source repository and installed skills")
     manifest, transcript = source(packet)
     if out.exists():
         raise ValueError("Report already exists; choose a new path")

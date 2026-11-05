@@ -5,6 +5,8 @@ description: 处理停训达到7天、连续漏练3次、生病或伤病评估�
 
 # Keshig 训练中断恢复
 
+个人快照、接回卡与临时文件必须位于源码和整个已安装 `skills/` 目录之外。已有系统时先运行 `training-system` 的 `inspect`，写入前运行 `check-path --path <目标>`；独立使用时也检查实际路径和祖先目录中的 `keshig.manifest.json`、`SKILL.md`。没有安全的个人目录时先确认位置，不回退到当前工作目录。
+
 ## 共同训练判断协议
 
 处理训练数据、RPE、下一次调整、计划渐进或失败反馈时，先读 [训练数据判断与渐进协议](references/training-progression-protocol.md)。它统一力量、增肌、减脂保肌三类目标，允许有理由的多变量联合调整；优先于旧参考中的固定单变量和机械重复规则，不覆盖本 Skill 的数据读取、正式记录及计划写入权限。未知 RPE、体感或休息不抹掉已完成组；先给能确定的分析，影响具体决定的未知再轻量核实，不循环追问用户已表示不记得的内容。
@@ -108,7 +110,7 @@ description: 处理停训达到7天、连续漏练3次、生病或伤病评估�
 2. 《Keshig 个人训练接回卡》；
 3. 如用户需要，更新后的第一周训练安排。
 
-用户指定输出目录时优先使用；否则先读取已初始化系统的 `系统/keshig-system.json`，把状态快照和接回卡写入 `output_locations.returns`；只有尚未建立系统配置时，才写入 `KESHIG_FITNESS_HOME/returns/` 或当前工作目录的 `fitness-output/returns/`。客户模式只使用代号。真实姓名、联系方式、病史原文不写入公共知识库或示例。
+用户指定输出目录时优先使用；否则先读取已初始化系统的 `系统/keshig-system.json`，把状态快照和接回卡写入 `output_locations.returns`；尚未建立系统配置时，只写入仓库外的 `KESHIG_FITNESS_HOME/returns/` 或用户指定的个人目录。客户模式只使用代号。真实姓名、联系方式、病史原文不写入公共知识库或示例。
 
 ## 输出要求
 

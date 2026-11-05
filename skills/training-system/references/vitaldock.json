@@ -1,0 +1,8 @@
+{
+  "version": "0.4.0",
+  "revision": "9cb7ee16f6d053f63fa7cb517fd5c1136f850933",
+  "source": "https://github.com/LLzijian/vitaldock",
+  "install": "vitaldock[live] @ https://github.com/LLzijian/vitaldock/archive/9cb7ee16f6d053f63fa7cb517fd5c1136f850933.zip",
+  "response_schema": "agent/1",
+  "python_min": [3, 11]
+}

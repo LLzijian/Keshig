@@ -14,6 +14,10 @@ class LearningTests(unittest.TestCase):
   self.selection=self.root/'selection.json';self.selection.write_text(json.dumps(self.ids))
   v.select(NS(input=self.selection,question='学习摄影曝光'),self.runtime)
  def tearDown(self):self.tmp.cleanup()
+ def test_workspace_cannot_be_inside_another_skill(self):
+  target=Path(__file__).resolve().parents[1]/'skills/fitness-plan/private-learning'
+  with self.assertRaises(ValueError):v.paths(NS(workspace=str(target)))
+  self.assertFalse(target.exists())
  def fake(self,kind,identifier):
   p=self.runtime/(identifier+'-'+kind+'.json');p.write_text(json.dumps({'source_id':'douyin:'+identifier}));return p
  def test_any_topic_and_more_than_three(self):

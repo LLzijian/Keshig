@@ -51,8 +51,11 @@ def capture_selected(args,runtime):
 def paths(args):
     root=Path(args.workspace).expanduser().resolve()
     installed=Path(__file__).resolve().parents[1]
-    if root==installed or installed in root.parents:
-        raise ValueError('Use a private workspace outside the installed Skill')
+    if root==installed.parent or installed.parent in root.parents or any(
+        (p/'keshig.manifest.json').is_file() or (p/'SKILL.md').is_file() or
+        p.name.casefold()=='skills' and (p.parent.name in {'.agents','.codex','.claude'} or next(p.glob('*/SKILL.md'),None) is not None)
+        for p in (root,*root.parents)):
+        raise ValueError('Use a private workspace outside the source repository and installed skills')
     root.mkdir(parents=True,exist_ok=True)
     base.ROOT=source.ROOT=root
     base.RUNTIME=root/'runtime';base.RUNTIME.mkdir(exist_ok=True)

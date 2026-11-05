@@ -5,6 +5,8 @@ description: 基于用户当前状态、Skill 内置健身知识和最新官方�
 
 # Keshig 个性化健身计划
 
+个人档案、计划与临时文件必须放在源码和整个已安装 `skills/` 目录之外。已有个人系统时先运行 `training-system` 的 `inspect`，写入前用 `check-path --path <目标>` 检查实际路径；独立使用本 Skill 时也须检查目标及祖先目录，不能位于含 `keshig.manifest.json` 或 `SKILL.md` 的目录内。位置未知时先确认个人目录，不自动写入当前工作目录。
+
 把计划视为基于某一时间点用户状态的可验证训练假设。先建档、再分层、再选动作和训练变量，最后从同一份结构化数据生成 Markdown 计划书与 JSON 契约。
 
 ## 交付形态
@@ -89,7 +91,7 @@ description: 基于用户当前状态、Skill 内置健身知识和最新官方�
 完整问诊结束后，先按参考规范生成状态快照，再生成计划。
 
 - 用户指定输出目录时优先使用该目录。
-- 未指定时，先读取已初始化系统的 `系统/keshig-system.json`，保存到 `output_locations.profiles`；只有尚未建立系统配置时，才使用 `KESHIG_FITNESS_HOME/profiles/` 或当前工作目录的 `fitness-output/profiles/`。
+- 未指定时，先读取已初始化系统的 `系统/keshig-system.json`，保存到 `output_locations.profiles`；尚未建立系统配置时，只使用仓库外的 `KESHIG_FITNESS_HOME/profiles/` 或用户明确指定的个人目录。
 - 使用 `YYYY-MM-DD-HHmm-keshig-training-profile.md`；客户模式只使用代号和脱敏资料。
 - 新状态创建新文件，不覆盖历史；计划引用准确的 `snapshot_id` 和路径。
 - 不在快照记录完整病历、账号或无关隐私，只记录会影响训练决策的限制和来源。
@@ -139,7 +141,7 @@ python scripts/validate_plan.py <plan.json>
 
 除非用户明确只要口头分析或拒绝文件，制定/重做完整计划时交付一份 Markdown 计划书。计划书写清：阶段目标、周结构、每个训练日的动作与组次、渐进规则、短版降级、复盘节点和待确认项。重量来源、动作理由和假设与处方分开写，不把推断写成实测。
 
-用户指定输出目录时优先使用；否则先读取已初始化系统的 `系统/keshig-system.json`，把 JSON 与 Markdown 写入 `output_locations.plans`；只有尚未建立系统配置时，才写入 `KESHIG_FITNESS_HOME/plans/` 或当前工作目录的 `fitness-output/plans/`。不得覆盖旧文件，实质修订使用 `-v02`、`-v03`。
+用户指定输出目录时优先使用；否则先读取已初始化系统的 `系统/keshig-system.json`，把 JSON 与 Markdown 写入 `output_locations.plans`；尚未建立系统配置时，只写入仓库外的 `KESHIG_FITNESS_HOME/plans/` 或用户明确指定的个人目录。不得覆盖旧文件，实质修订使用 `-v02`、`-v03`。
 
 ## 与其他 Skill 的边界
 

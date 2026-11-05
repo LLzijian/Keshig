@@ -1,0 +1,12 @@
+#!/bin/sh
+python=$(git config --get keshig.python)
+if [ -n "$python" ]; then
+    exec "$python" -B tools/privacy_check.py --mode staged
+fi
+for python in python3 python; do
+    if command -v "$python" >/dev/null 2>&1; then
+        exec "$python" -B tools/privacy_check.py --mode staged
+    fi
+done
+echo "Keshig: run tools/setup_dev.py with your Python interpreter first." >&2
+exit 1

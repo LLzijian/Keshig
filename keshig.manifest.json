@@ -1,7 +1,7 @@
 {
   "name": "keshig",
   "display_name": "Keshig（怯薛）",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "license": "MIT",
   "language": "zh-CN",
   "description": "健身与饮食的操作系统：训练方法、营养口径、设备数据、记录结构；交互全部在 Agent 对话中完成",
@@ -31,7 +31,9 @@
     "entry": "device/vitaldock_client.py",
     "mode": "read_only_subprocess",
     "upstream_env": "VITALDOCK_HOME",
-    "upstream_discovery": "env VITALDOCK_HOME；未设置时探测仓库同级目录 vitaldock/、VitalDock/、BioDeviceData/"
+    "installed_entry": "skills/training-system/scripts/vitaldock_client.py",
+    "lock": "skills/training-system/references/vitaldock.json",
+    "upstream_discovery": "个人系统内的托管环境；开发者可用 VITALDOCK_HOME 显式指定现有检出目录"
   },
   "schema": ["schema/health.sql", "schema/device.sql"]
 }

@@ -42,15 +42,14 @@
 `device/vitaldock_client.py` 只做一件事：把上游 VitalDock 的 CLI 输出变成结构化 JSON。
 
 ```bash
-python device/vitaldock_client.py check      --day 2026-11-02
-python device/vitaldock_client.py wellness   --day 2026-11-02 --history-days 28
-python device/vitaldock_client.py activities --day 2026-11-02 --history-days 28
-python device/vitaldock_client.py selftest   # 只检查路径，不联网
+python device/vitaldock_client.py setup      --root "<个人系统目录>"
+python device/vitaldock_client.py selftest   --root "<个人系统目录>"  # 不联网
+python device/vitaldock_client.py onboard    --root "<个人系统目录>"
+python device/vitaldock_client.py activities --root "<个人系统目录>" --history-days 28
 ```
 
-上游项目路径用 `VITALDOCK_HOME` 指定；未设置时自动探测本仓库同级目录下的
-`vitaldock/`、`VitalDock/`、`BioDeviceData/`。
-**适配器不写入上游目录**，也不 import 上游源码。设备接入是可选项，不配置不影响训练与营养系统。
+Agent 按[完整接入流程](skills/training-system/references/device-setup.md)引导官方授权、本机隐藏输入密钥、逐步验证和故障恢复。普通用户不需要准备第二份源码；`setup` 在个人目录安装固定版本。开发者仍可用 `VITALDOCK_HOME` 只读连接现有检出目录。
+安装后的入口为 `training-system/scripts/vitaldock_client.py`，随 Skill 分发。**适配器不写入上游目录**，也不 import 上游源码。设备接入是可选项，不配置不影响训练与营养系统。
 
 为什么设备值与手记分表：同一天两条来源会各说各的时长（人记 60 min vs 设备 3020 s），
 自动合并等于替用户裁决。对照就放在查询里并排看。
@@ -73,6 +72,8 @@ python tools/install.py --platform codex --all --verify   # 只做漂移检查
 
 安装后新开一个对话，说「开始建立我的健身系统」。也可以只把 `skills/<name>/` 复制进对应 Agent 的 skills 目录。
 
+默认安装全部 Skill；Codex 默认使用共享主目录 `~/.agents/skills`，保留指向该目录的已有入口联接。个人系统必须放在源码和技能目录之外。训练与营养需要 Python 3.10+，可选设备接入需要 Python 3.11+。
+
 ## 文档
 
 - [产品定义与 Agent 职责](docs/PRODUCT.md)
@@ -80,12 +81,16 @@ python tools/install.py --platform codex --all --verify   # 只做漂移检查
 - [升级说明](docs/UPGRADE.md)
 - [用户可见对话流程](SYSTEM-FLOW.md)
 - [来源与许可](NOTICE.md)
+- [开发、自己使用与发布](docs/DEVELOPMENT.md)
+- [验证范围](docs/VALIDATION.md)
 
 ## 隐私
 
 仓库零个人数据：不提交个人资料、训练记录、照片、API key、token 或个人机器路径。
-个人档案、计划、复盘、营养记录由用户自己的 `.gitignore` 兜底管理。
+个人目录由路径检查隔离，`.gitignore` 兜底；开发者运行 `python tools/setup_dev.py` 启用提交与推送前检查。发布包通过白名单构建，规则检查不能识别任意文字中的个人信息。
 发现误提交时先移除文件，再清理 git 历史。
+
+本地保存不等于所有处理都在本机：设备链路经过华为与 Intervals.icu；云端 Agent 可能把对话和工具结果发送给对应服务。Keshig 不提供集中收集个人资料的服务。
 
 ## 许可
 
