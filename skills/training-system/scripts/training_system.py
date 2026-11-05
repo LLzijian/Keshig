@@ -18,7 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-SUITE_VERSION = "0.3.1"
+SUITE_VERSION = "0.4.0"
 PORTABLE_CONFIG_VERSION = 1
 PROJECT_RELATIVE = Path("个人训练系统")
 BACKUP_RELATIVE = Path("系统/backups")

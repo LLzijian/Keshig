@@ -1,98 +1,143 @@
+<div align="center">
+
 # 怯薛 · Keshig
 
-一个住在你自己 Agent 里的私人教练：采集身体数据、记录训练与饮食、基于公开专家方法论给建议、定计划。
-**训练方法、营养口径、设备数据、记录结构**四件事收在一个仓库里，
-既能给 Agent 装成 Skills 用，也能作为一套可查的方法论。产品定义见 [`docs/PRODUCT.md`](docs/PRODUCT.md)。
+**住在你自己 Agent 里的私人教练 —— 健身与饮食的操作系统**
+
+[![Checks](https://github.com/LLzijian/Keshig/actions/workflows/check.yml/badge.svg?branch=main)](https://github.com/LLzijian/Keshig/actions/workflows/check.yml)
+[![Version](https://img.shields.io/badge/version-0.4.0-orange)](keshig.manifest.json)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue)](docs/beginner-guide.md)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
+*An agent-native operating system for training & nutrition: methodology, records and device data live in one repo — every interaction happens in conversation, personal data never leaves your own machine.*
+
+</div>
+
+---
 
 名出元制怯薛。《元史·卷九十九·兵志二·宿卫》：「其它预怯薛之职而居禁近者，分冠服、弓矢、食饮、文史、车马、庐帐、府库、医药、卜祝之事，悉世守之。」——
 一个建制管多项技艺，「悉世守之」是长期。这里管四件：**吃、练、量、记**。
 
-所有交互都在 Agent 对话中完成：没有网页工作台、没有本地面板、没有云端账号。
-仓库本身是干净的工具与知识库，个人数据留在用户自己的电脑上。
+没有网页工作台，没有本地面板，没有云端账号。安装后新开一个对话，说「开始建立我的健身系统」，
+Agent 就会建档、筛查、定计划、做复盘。仓库本身是干净的工具与知识库；你的数据留在你自己的电脑上。
 
-## 组成
+## ✨ 核心设计
 
-| 目录 | 内容 |
-|---|---|
-| `skills/` | 10 个可安装的 Agent Skill（见下） |
-| `knowledge/` | 方法论文本、证据库、训练进阶 JSON |
-| `device/` | 华为手环 → Intervals.icu 的只读适配器（子进程调用，不复制上游源码） |
-| `schema/` | 记录库 DDL：身体读数、运动事件、摄入、时点、目标、口径快照、设备数据 |
-| `tools/` | 安装器、升级器、专家库构建、整包校验 |
-| `docs/` | 产品定义、新手引导、升级说明、上游变更存档 |
-| `licenses/` | 上游 MIT 许可原文 |
+| 原则 | 做法 |
+| --- | --- |
+| **对话即界面** | 计划、复盘、营养、设备数据全部由 Agent 在对话中读写本地文件；不生成网页与面板 |
+| **手记与设备分表** | `vitals`/`activity` 存「人报的」，`device_*` 存「表测的」，对照在查询里并排看，绝不静默合并 |
+| **推断与实测分离** | e1RM、经验 TDEE 等推算值一律显式标注 `is_inferred`，不与实测混写 |
+| **不发明口径** | 摄入与训练目标只引用 `knowledge/` 证据库与用户自己钉下的计划书 |
+| **零个人数据** | 仓库不提交任何个人资料；个人系统必须位于源码与已安装 `skills/` 之外，由路径检查与 `.gitignore` 双重兜底 |
+| **医疗红线** | 伤病、用药、异常体征一律「这要医生看」，不诊断、不开药 |
 
-## Skills
+## 🧠 科学性引擎（v0.4.0）
+
+- **多信号准备度自调节**：HRV、静息心率、睡眠、晨起握力对照个人 7—28 天滚动基线，绿/黄/红三级分流；单指标单日波动不独裁砍负荷（反 nocebo）。
+- **容量地标审计**：单次单肌群直接组上限（防垃圾容量）、分层周有效组数（MV/MEV/MAV/MRV）、推拉结构平衡、有氧与下肢抗阻干扰预警，全部由 `validate_plan.py` 自动执行。
+- **力量周期契约**：`validate_cycle.py` 硬校验多组 `首组 RPE→末组 RPE` 箭头处方、回退组联动规则、负重自重总系统负荷与真实减量周。
+- **复盘守门**：`validate_review.py` 校验复盘结构，`待补全` 状态不得作为改计划的依据。
+- **动态营养**：EWMA 指数平滑体重 + 14 天确认摄入反推真实 TDEE（单次调整硬限 150 kcal），体重变化速率护栏与减量周/饮食间歇联动。
+
+## 🏗️ 结构
+
+```
+┌──────────────────────────────────────────────┐
+│            Agent 对话（唯一交互界面）            │
+└───────────────────┬──────────────────────────┘
+                    │ tools/install.py 一键安装
+        ┌───────────▼────────────┐
+        │    skills/  × 10        │  建档→计划→周期→复盘→接回→营养→学习
+        └──┬─────────┬─────────┬─┘
+           │         │         │
+  ┌────────▼───┐ ┌───▼────┐ ┌──▼───────────────┐
+  │ knowledge/ │ │schema/ │ │ device/           │
+  │ 方法论+证据 │ │ SQLite │ │ VitalDock 只读桥  │
+  └────────────┘ └───┬────┘ └──────┬───────────┘
+                     ▼             ▼
+        ┌────────────────────────────────┐
+        │  个人系统（源码与 skills/ 之外）   │
+        │  系统/health.sqlite3            │
+        │  手记表 × 设备表 → 并排对照查询   │
+        └────────────────────────────────┘
+```
+
+## 📦 Skills
 
 | Skill | 管什么 |
-|---|---|
-| `training-system` | 初始化 / 升级 / 诊断 / 校验整套系统，把各 Skill 串成单一主源 |
-| `fitness-plan` | 建档、安全筛查、动作选择、完整计划与 Markdown 计划书 |
-| `strength-cycle-planner` | 单个力量主项的 8—12 周周期 |
+| --- | --- |
+| `training-system` | 初始化 / 升级 / 诊断 / 校验整套系统，内置 SQLite 记录库与设备同步 |
+| `fitness-plan` | 建档、安全筛查、动作选择、完整计划与容量审计 |
+| `strength-cycle-planner` | 单个力量主项的 8—12 周周期与契约校验 |
 | `strength-training-review` | 单次、滚动、基准与周训练复盘 |
 | `training-return` | 停训、漏练、伤病或条件变化后的接回 |
-| `nutrition-system` | 建档、日型宏量、餐食确认链、两周复盘 |
+| `nutrition-system` | 建档、日型宏量、餐食确认链、EWMA/TDEE 两周复盘 |
 | `training-expert-library` | 六个来源限定的专家模块与路由 |
 | `expert-tanchengyi` | 谭成义视角的训练判断框架（专家视角，非本人） |
 | `video-learning` | 视频来源核对、转写、分段学习笔记 |
 | `douyin-question-distiller` | 从短视频与图文中蒸馏问题、证据与边界 |
 
-## 设备数据
-
-`device/vitaldock_client.py` 只做一件事：把上游 VitalDock 的 CLI 输出变成结构化 JSON。
+## 🚀 快速开始
 
 ```bash
-python device/vitaldock_client.py setup      --root "<个人系统目录>"
-python device/vitaldock_client.py selftest   --root "<个人系统目录>"  # 不联网
-python device/vitaldock_client.py onboard    --root "<个人系统目录>"
-python device/vitaldock_client.py activities --root "<个人系统目录>" --history-days 28
-```
-
-Agent 按[完整接入流程](skills/training-system/references/device-setup.md)引导官方授权、本机隐藏输入密钥、逐步验证和故障恢复。普通用户不需要准备第二份源码；`setup` 在个人目录安装固定版本。开发者仍可用 `VITALDOCK_HOME` 只读连接现有检出目录。
-安装后的入口为 `training-system/scripts/vitaldock_client.py`，随 Skill 分发。**适配器不写入上游目录**，也不 import 上游源码。设备接入是可选项，不配置不影响训练与营养系统。
-
-为什么设备值与手记分表：同一天两条来源会各说各的时长（人记 60 min vs 设备 3020 s），
-自动合并等于替用户裁决。对照就放在查询里并排看。
-
-## 记录结构
-
-`schema/health.sql` 是记录库 DDL。通则：
-
-- 时间戳一律取落库时的机器值，不是用户输入的钟点。
-- 除 `date`／`sport` 外字段一律可空（八段锦、走路这种没有设备、时长、对手）。
-- 用户报的时段原词单独一列原样存（`reported_tod`），不换算、不参与判定。
-- 摄入只存结构化值（kcal／蛋白／碳水／脂肪），不存原话副本。
-
-## 安装
-
-```bash
+git clone https://github.com/LLzijian/Keshig.git
+cd Keshig
 python tools/install.py --platform codex      # 或 claude / agents
 python tools/install.py --platform codex --all --verify   # 只做漂移检查
 ```
 
 安装后新开一个对话，说「开始建立我的健身系统」。也可以只把 `skills/<name>/` 复制进对应 Agent 的 skills 目录。
 
-默认安装全部 Skill；Codex 默认使用共享主目录 `~/.agents/skills`，保留指向该目录的已有入口联接。个人系统必须放在源码和技能目录之外。训练与营养需要 Python 3.10+，可选设备接入需要 Python 3.11+。
+默认安装全部 Skill；Codex 默认使用共享主目录 `~/.agents/skills`，保留指向该目录的已有入口联接。
+个人系统必须放在源码和技能目录之外。训练与营养需要 Python 3.10+，可选设备接入需要 Python 3.11+。
 
-## 文档
+## ⌚ 设备数据（可选）
+
+`device/vitaldock_client.py` 只做一件事：把上游 VitalDock 的 CLI 输出变成结构化 JSON，落进 `device_*` 表。
+
+```bash
+python device/vitaldock_client.py setup      --root "<个人系统目录>"
+python device/vitaldock_client.py selftest   --root "<个人系统目录>"   # 不联网
+python device/vitaldock_client.py onboard    --root "<个人系统目录>"
+python device/vitaldock_client.py activities --root "<个人系统目录>" --history-days 28
+```
+
+Agent 按[完整接入流程](skills/training-system/references/device-setup.md)引导官方授权、本机隐藏输入密钥、逐步验证和故障恢复。
+**适配器不写入上游目录**，也不 import 上游源码；设备接入是可选项，不配置不影响训练与营养系统。
+
+为什么设备值与手记分表：同一天两条来源会各说各的时长（人记 60 min vs 设备 3020 s），自动合并等于替用户裁决。对照就放在查询里并排看。
+
+## 🗄️ 记录结构
+
+`schema/health.sql` + `schema/device.sql` 是记录库 DDL，落点为个人系统内的 `系统/health.sqlite3`。通则：
+
+- 时间戳一律取落库时的机器值，不是用户输入的钟点。
+- 除 `date`／`sport` 外字段一律可空（八段锦、走路这种没有设备、时长、对手）。
+- 用户报的时段原词单独一列原样存（`reported_tod`），不换算、不参与判定。
+- 摄入只存结构化值（kcal／蛋白／碳水／脂肪），不存原话副本。
+- 力量训练逐组落 `workout_sets`（顶组/回退/工作组、逐组 RPE/RIR、总系统负荷、e1RM 推断标记）。
+
+## 📚 文档
 
 - [产品定义与 Agent 职责](docs/PRODUCT.md)
 - [新手搭建指南](docs/beginner-guide.md)
 - [升级说明](docs/UPGRADE.md)
 - [用户可见对话流程](SYSTEM-FLOW.md)
-- [来源与许可](NOTICE.md)
 - [开发、自己使用与发布](docs/DEVELOPMENT.md)
 - [验证范围](docs/VALIDATION.md)
+- [贡献与仓库约定](AGENTS.md)
+- [来源与许可](NOTICE.md)
 
-## 隐私
+## 🔒 隐私
 
 仓库零个人数据：不提交个人资料、训练记录、照片、API key、token 或个人机器路径。
-个人目录由路径检查隔离，`.gitignore` 兜底；开发者运行 `python tools/setup_dev.py` 启用提交与推送前检查。发布包通过白名单构建，规则检查不能识别任意文字中的个人信息。
-发现误提交时先移除文件，再清理 git 历史。
+个人目录由路径检查隔离，`.gitignore` 兜底；开发者运行 `python tools/setup_dev.py` 启用提交与推送前检查。
+发布包通过白名单构建。发现误提交时先移除文件，再清理 git 历史。
 
 本地保存不等于所有处理都在本机：设备链路经过华为与 Intervals.icu；云端 Agent 可能把对话和工具结果发送给对应服务。Keshig 不提供集中收集个人资料的服务。
 
-## 许可
+## 📄 许可
 
 Keshig MIT。上游材料按各自许可保留，见 [`NOTICE.md`](NOTICE.md) 与 `licenses/`。
 `skills/expert-tanchengyi/` 是基于公开言论的推断框架，非本人观点、非本人授权。
