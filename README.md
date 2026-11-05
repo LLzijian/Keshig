@@ -80,14 +80,16 @@ Agent 就会建档、筛查、定计划、做复盘。仓库本身是干净的�
 
 ## 🚀 快速开始
 
+下载 [Release 压缩包](https://github.com/LLzijian/Keshig/releases)并解压，或 `git clone` 本仓库，然后：
+
 ```bash
-git clone https://github.com/LLzijian/Keshig.git
-cd Keshig
 python tools/install.py --platform codex      # 或 claude / agents
 python tools/install.py --platform codex --all --verify   # 只做漂移检查
 ```
 
-安装后新开一个对话，说「开始建立我的健身系统」。也可以只把 `skills/<name>/` 复制进对应 Agent 的 skills 目录。
+也可以只把 `skills/<name>/` 复制进对应 Agent 的 skills 目录。安装与验证通过后**源码即可删除**——装上就是你的东西，个人数据不在源码里，升级时重新下载一份即可。
+
+安装后新开一个对话，说「开始建立我的健身系统」。Agent 会先问你想把训练记录保存在哪（跟随 Agent 记忆目录 / 可见的个人文件夹 / 自定义路径），再开始建档。
 
 默认安装全部 Skill；Codex 默认使用共享主目录 `~/.agents/skills`，保留指向该目录的已有入口联接。
 个人系统必须放在源码和技能目录之外。训练与营养需要 Python 3.10+，可选设备接入需要 Python 3.11+。
