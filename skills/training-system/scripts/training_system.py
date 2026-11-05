@@ -16,7 +16,9 @@ import shutil
 import sys
 from pathlib import Path
 
-SUITE_VERSION = "0.3.0"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+SUITE_VERSION = "0.3.1"
 PORTABLE_CONFIG_VERSION = 1
 PROJECT_RELATIVE = Path("个人训练系统")
 BACKUP_RELATIVE = Path("系统/backups")
@@ -57,6 +59,38 @@ def stop(message: str) -> None:
     raise SystemExit("training_system: FAIL\n- " + message)
 
 
+def check_private_path(path: Path) -> Path:
+    target = path.expanduser().resolve()
+    skills = SKILL_ROOT.resolve()
+    if target == skills or skills in target.parents:
+        stop("个人资料必须放在已安装的 skills 目录之外")
+    for parent in (target, *target.parents):
+        skill_root = parent.name.casefold() == "skills" and (
+            parent.parent.name in {".agents", ".codex", ".claude"} or next(parent.glob("*/SKILL.md"), None) is not None)
+        if skill_root or (parent / "keshig.manifest.json").is_file() or (parent / "SKILL.md").is_file():
+            stop("个人资料必须放在 Keshig 源码和 Skill 目录之外")
+    return target
+
+
+def check_data_paths(root: Path, data: dict | None = None) -> None:
+    check_private_path(root)
+    values = [*REQUIRED_DIRS, "系统", BACKUP_RELATIVE.as_posix()]
+    if data:
+        locations = data.get("output_locations")
+        if not isinstance(locations, dict):
+            stop("output_locations 必须是对象")
+        if any(not isinstance(value, str) or not value.strip() or is_machine_absolute(value) for value in locations.values()):
+            stop("output_locations 必须使用当前个人系统内的非空相对路径")
+        values.extend(str(value) for value in locations.values())
+        values.extend(str(data.get(key) or fallback) for key, fallback in (
+            ("project_root", PROJECT_RELATIVE), ("backup_root", BACKUP_RELATIVE)))
+    for value in values:
+        target = safe_relative(root, value, PROJECT_RELATIVE, "数据位置")
+        check_private_path(target)
+    if config_path(root).resolve().parent != (root / "系统").resolve():
+        stop("系统配置不能指向其他目录")
+
+
 def read_json(path: Path) -> dict:
     try:
         data = json.loads(path.read_text(encoding="utf-8-sig"))
@@ -68,13 +102,19 @@ def read_json(path: Path) -> dict:
 
 
 def write_json(path: Path, data: dict) -> None:
+    check_private_path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
+    if path.is_symlink() or temporary.is_symlink():
+        stop("拒绝通过文件链接写入个人资料")
     temporary.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     os.replace(temporary, path)
 
 
 def write_text(path: Path, content: str) -> None:
+    check_private_path(path)
+    if path.is_symlink():
+        stop("拒绝通过文件链接写入个人资料")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
 
@@ -164,22 +204,26 @@ def migrate_config(root: Path, path: Path, data: dict) -> dict:
 
 
 def load_config(root: Path) -> dict:
+    check_data_paths(root)
     path = config_path(root)
     if not path.is_file():
         stop("找不到系统配置；请先在空目录运行 bootstrap，或用 --root 指向已有系统")
     data = read_json(path)
     if data.get("schema") != 1:
         stop(f"不支持的配置 schema：{data.get('schema')}")
+    check_data_paths(root, data)
     return migrate_config(root, path, data)
 
 
 def load_config_readonly(root: Path) -> dict:
+    check_data_paths(root)
     path = config_path(root)
     if not path.is_file():
         stop("找不到系统配置；请先在空目录运行 bootstrap，或用 --root 指向已有系统")
     data = read_json(path)
     if data.get("schema") != 1:
         stop(f"不支持的配置 schema：{data.get('schema')}")
+    check_data_paths(root, data)
     data = dict(data)
     project_value = str(data.get("project_root") or "")
     if not project_value or is_machine_absolute(project_value):
@@ -208,6 +252,7 @@ def installed_skills() -> Path:
 
 def bootstrap(args: argparse.Namespace) -> None:
     root = Path(args.target).resolve()
+    check_data_paths(root)
     ensure_empty(root)
     root.mkdir(parents=True, exist_ok=True)
 
@@ -269,6 +314,8 @@ def bootstrap(args: argparse.Namespace) -> None:
         },
     }
     write_json(config_path(root), config)
+    import health_db
+    health_db.init_db(root)
     print("training_system: PASS")
     print("mode: 待建档；请完成问诊后再生成正式计划")
     print("root: " + str(root))
@@ -299,6 +346,9 @@ def doctor(args: argparse.Namespace) -> None:
         elif is_machine_absolute(value):
             problems.append("output_locations 含机器绝对路径：" + key)
 
+    import health_db
+    problems.extend(health_db.verify_db_readonly(root))
+
     if problems:
         print("training_system: FAIL")
         for item in problems:
@@ -327,6 +377,8 @@ def inspect_system(args: argparse.Namespace) -> None:
     def locate(key: str) -> Path:
         return safe_relative(root, locations.get(key), Path("个人训练系统"), key)
 
+    import health_db
+
     summary = {
         "kind": "keshig_system_summary",
         "root": str(root),
@@ -335,6 +387,7 @@ def inspect_system(args: argparse.Namespace) -> None:
         "authoritative_sources": {
             key: str(locate(key)) for key in ("profiles", "plans", "cycles", "reviews", "returns", "nutrition")
         },
+        "database": health_db.inspect_db_readonly(root),
         "current_plans": _listed(locate("plans"), "*"),
         "current_cycles": _listed(locate("cycles"), "*"),
         "recent_reviews": _listed(locate("reviews"), "*"),
@@ -361,6 +414,8 @@ def import_private_pack(args: argparse.Namespace) -> None:
     if not source.is_dir():
         stop("源目录不存在：" + str(source))
     target = root / "健身知识库" / "私人知识包" / source.name
+    safe_relative(root, target.relative_to(root).as_posix(), PROJECT_RELATIVE, "私人知识包")
+    check_private_path(target)
     if target.exists():
         stop("目标已存在，拒绝覆盖：" + str(target))
     shutil.copytree(source, target)
@@ -373,6 +428,9 @@ def upgrade(args: argparse.Namespace) -> None:
     config = load_config(root)
     config["suite_version"] = SUITE_VERSION
     write_json(config_path(root), config)
+    import health_db
+    if health_db.db_path(root).is_file() and health_db.verify_db_readonly(root):
+        health_db.init_db(root)
     print("training_system: PASS")
     print("配置已升级到 " + SUITE_VERSION)
     print("计划、复盘、状态档案与营养记录保持不变")
@@ -393,6 +451,9 @@ def validate_system(args: argparse.Namespace) -> None:
     for relative in REQUIRED_DIRS:
         if not (root / relative).is_dir():
             problems.append("目录缺失：" + relative)
+
+    import health_db
+    problems.extend(health_db.verify_db_readonly(root))
 
     if problems:
         print("training_system: FAIL")
@@ -437,6 +498,23 @@ def main() -> None:
     p = subs.add_parser("validate")
     p.add_argument("--root", required=True)
     p.set_defaults(func=validate_system)
+
+    p = subs.add_parser("check-path")
+    p.add_argument("--path", required=True)
+    p.set_defaults(func=lambda args: print("private_path: PASS " + str(check_private_path(Path(args.path)))))
+
+    p = subs.add_parser("db-init")
+    p.add_argument("--root", required=True)
+
+    def _db_init(args: argparse.Namespace) -> None:
+        root = Path(args.root).resolve()
+        load_config_readonly(root)
+        import health_db
+        path = health_db.init_db(root)
+        print("training_system: PASS")
+        print("database: " + str(path))
+
+    p.set_defaults(func=_db_init)
 
     args = parser.parse_args()
     args.func(args)

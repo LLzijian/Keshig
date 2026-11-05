@@ -79,3 +79,53 @@ CREATE TABLE IF NOT EXISTS grip (
   note        TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_grip_date ON grip(date);
+
+-- 只读并排对照视图：手记（vitals/grip）与设备（v_device_day）同日并排看，绝不静默合并
+CREATE VIEW IF NOT EXISTS v_daily_overview AS
+WITH all_dates AS (
+  SELECT date FROM vitals
+  UNION
+  SELECT date FROM device_daily
+  UNION
+  SELECT date FROM grip
+),
+vitals_day AS (
+  SELECT
+    date,
+    MAX(weight_kg)    AS manual_weight_kg,
+    MAX(body_fat_pct) AS manual_body_fat_pct,
+    MAX(waist_cm)     AS manual_waist_cm,
+    MAX(chest_cm)     AS manual_chest_cm,
+    MAX(sleep_h)      AS manual_sleep_h
+  FROM vitals
+  GROUP BY date
+),
+grip_day AS (
+  SELECT
+    date,
+    ROUND(MAX(CASE WHEN hand = 'right' THEN kg END), 2) AS grip_right_best_kg,
+    ROUND(MAX(CASE WHEN hand = 'left'  THEN kg END), 2) AS grip_left_best_kg,
+    ROUND(AVG(kg), 2)                                   AS grip_mean_kg
+  FROM grip
+  GROUP BY date
+)
+SELECT
+  d.date,
+  v.manual_weight_kg,
+  v.manual_body_fat_pct,
+  v.manual_waist_cm,
+  v.manual_chest_cm,
+  v.manual_sleep_h,
+  g.grip_right_best_kg,
+  g.grip_left_best_kg,
+  g.grip_mean_kg,
+  dev.resting_hr  AS device_resting_hr,
+  dev.sleep_h     AS device_sleep_h,
+  dev.sleep_score AS device_sleep_score,
+  dev.hrv_ms      AS device_hrv_ms,
+  dev.atl         AS device_atl,
+  dev.fetched_at  AS device_fetched_at
+FROM all_dates d
+LEFT JOIN vitals_day   v   ON v.date   = d.date
+LEFT JOIN grip_day     g   ON g.date   = d.date
+LEFT JOIN v_device_day dev ON dev.date = d.date;

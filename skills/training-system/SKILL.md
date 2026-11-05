@@ -46,6 +46,8 @@ description: 初始化、升级、诊断、校验和迁移 Keshig 本地训练�
 
 运行前读取 [系统契约](references/system-contract.md)。
 
+个人系统必须位于源码与已安装的整个 `skills/` 目录之外。首次写入前运行 `check-path --path <个人目录或输出文件>`；日常写入先运行 `inspect`，路径检查失败时停止写入。计划、照片、设备环境、缓存和备份都遵守同一边界。用户要求接入华为健康时读取 [设备接入与故障恢复](references/device-setup.md)，由本 Skill 完成引导，不让用户自行拼接两个仓库。
+
 日常计划修改、训练复盘和状态确认先运行 `inspect`。`--root` 指向含 `系统/keshig-system.json` 的系统根目录。它只输出紧凑状态和权威主源路径；随后按任务读取对应的一个计划、基准或复盘文件。不得扫描历史计划目录、全部复盘或全部专家模块。
 
 ## 日常路由
@@ -70,6 +72,13 @@ python scripts/training_system.py upgrade --root "<系统根目录>"
 python scripts/training_system.py install-skill --root "<系统根目录>" --name fitness-plan
 python scripts/training_system.py import-private-pack --root "<系统根目录>" --source "<用户明确指定的目录>"
 python scripts/training_system.py validate --root "<系统根目录>"
+python scripts/training_system.py check-path --path "<个人目录或输出文件>"
+python scripts/training_system.py db-init --root "<系统根目录>"
+python scripts/health_db.py log-vitals --root "<系统根目录>" --weight-kg 75.2 --sleep-h 7.5
+python scripts/health_db.py log-grip --root "<系统根目录>" --hand right --kg 52.0
+python scripts/health_db.py log-workout --root "<系统根目录>" --sport 力量 --sets-json "[...]"
+python scripts/health_db.py sync-device --root "<系统根目录>" --history-days 28
+python scripts/health_db.py query-context --root "<系统根目录>" --days 14
 ```
 
 `bootstrap` 仅接受空目录；`upgrade` 只更新配置版本与路径，发现损坏的托管文件时保留原件并报告冲突；私人知识、计划、复盘和状态档案永不覆盖。所有命令均使用 UTF-8，兼容中文、空格和非系统盘路径。

@@ -55,13 +55,12 @@ CREATE TABLE IF NOT EXISTS intake (
 
 -- 钉死的时点（他自己钉，怯薛只登记；开口只在这些窗口内）
 --
--- 【判定语义 · 2026-10-13 定，@remy 报的默认值陷阱】
+-- 判定语义：
 --   分母 = 所有 state IN ('pending','hit','expired') 的时点。
 --   `active` 只是「还接不接受未来的发生」，**不参与判定**——默认值不许把分母清零。
 --   一次性时点：钉下的那天 23:59 之前 state='pending'；之后
 --     窗口内有落账 → 'hit'；窗口内无落账 → 'expired'（**expired 仍进分母**）。
 --   'void' 只有两种来源：他自己撤回/改口，或该行是测试/误录 → 不进分母。
---   ⇒ 11-10 出表前必须先看这一格，别让一个默认值把整张表判空。
 CREATE TABLE IF NOT EXISTS slots (
   id              INTEGER PRIMARY KEY AUTOINCREMENT,
   weekday         INTEGER,            -- 0=周一 … 6=周日；NULL=一次性
@@ -83,7 +82,7 @@ CREATE TABLE IF NOT EXISTS coach_log (
   replied   INTEGER DEFAULT 0         -- 用于统计「回了一行的次数」，不作为失败记账
 );
 
--- 每日摄入目标（源自 减脂计划.md §二；不发明新目标，改口径先改计划书）
+-- 每日摄入目标（源自用户确认的计划书；改口径先改计划书）
 CREATE TABLE IF NOT EXISTS target (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   effective_date TEXT NOT NULL,      -- 该口径从哪天起生效
@@ -122,8 +121,34 @@ CREATE TABLE IF NOT EXISTS food_est (
   note      TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_target_date   ON target(effective_date);
-CREATE INDEX IF NOT EXISTS idx_food_est_item ON food_est(item);
-CREATE INDEX IF NOT EXISTS idx_activity_date ON activity(date);
-CREATE INDEX IF NOT EXISTS idx_intake_date   ON intake(date);
-CREATE INDEX IF NOT EXISTS idx_vitals_date   ON vitals(date);
+-- 力量训练逐组记录（与 activity 关联；承载顶组/回退/工作组的逐组重量、次数、RPE/RIR 与同标准 e1RM 估算）
+CREATE TABLE IF NOT EXISTS workout_sets (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  activity_id      INTEGER,            -- 关联 activity(id)；可空以兼容独立逐组落账
+  date             TEXT NOT NULL,      -- YYYY-MM-DD
+  logged_at        TEXT NOT NULL,      -- 机器值：落库时刻 YYYY-MM-DD HH:MM:SS
+  exercise         TEXT NOT NULL,      -- 动作标准名（如 '杠铃卧推' | '负重引体'）
+  pattern_group    TEXT,               -- '蹲' | '髋铰链' | '推' | '拉' | '单腿' | '核心'
+  role             TEXT DEFAULT 'work',-- 'warmup' | 'top' | 'backoff' | 'work' | 'technique'
+  set_index        INTEGER NOT NULL,   -- 第几组（1, 2, 3...）
+  weight_kg        REAL,               -- 外部器械负重或附加重量 kg
+  bodyweight_kg    REAL,               -- 自重负重动作当日体重 kg（未知留空，不猜）
+  total_load_kg    REAL,               -- 自重负重动作总系统负荷 = bodyweight_kg + weight_kg
+  reps             INTEGER,            -- 实际完成次数
+  rpe              REAL,               -- 逐组实际 RPE（1-10）
+  rir              REAL,               -- 逐组实际 RIR（可与 RPE 互算或单列记录）
+  rest_sec         INTEGER,            -- 实际组间休息秒数（区别于计划休息）
+  e1rm_kg          REAL,               -- Epley 粗算 e1RM（仅 reps + rir <= 10 时推算）
+  e1rm_is_inferred INTEGER DEFAULT 1,  -- 1=公式推断值；0=实测 1RM（推断与实测分开标明）
+  quality_note     TEXT,               -- 动作标准/幅度/停顿备注（结构化短语，非原话）
+  pain_flag        INTEGER DEFAULT 0,  -- 0=无异常疼痛；1=出现不适/疼痛中止
+  source           TEXT DEFAULT 'manual'
+);
+
+CREATE INDEX IF NOT EXISTS idx_target_date         ON target(effective_date);
+CREATE INDEX IF NOT EXISTS idx_food_est_item       ON food_est(item);
+CREATE INDEX IF NOT EXISTS idx_activity_date       ON activity(date);
+CREATE INDEX IF NOT EXISTS idx_workout_sets_date   ON workout_sets(date);
+CREATE INDEX IF NOT EXISTS idx_workout_sets_ex     ON workout_sets(exercise, date);
+CREATE INDEX IF NOT EXISTS idx_intake_date         ON intake(date);
+CREATE INDEX IF NOT EXISTS idx_vitals_date         ON vitals(date);
