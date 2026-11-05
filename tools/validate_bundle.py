@@ -10,6 +10,9 @@ import sys
 import tempfile
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from privacy_check import audit
+
 ROOT = Path(__file__).resolve().parents[1]
 SKILLS_ROOT = ROOT / "skills"
 TEXT_SUFFIXES = {".md", ".json", ".yaml", ".yml", ".py", ".ps1", ".js", ".cjs", ".sql", ".txt"}
@@ -78,6 +81,11 @@ def validate_skill(name: str) -> None:
 
 
 def validate_repository_hygiene() -> None:
+    if (ROOT / ".git").exists():
+        for mode in ("worktree", "history"):
+            errors, _ = audit(ROOT, mode)
+            if errors:
+                fail("Publication privacy check failed:\n" + "\n".join(errors))
     for path in ROOT.rglob("*"):
         rel = path.relative_to(ROOT)
         if any(part in {".git", "validation-output", "__pycache__", "node_modules", "test-results"} for part in rel.parts):
@@ -93,7 +101,16 @@ def validate_repository_hygiene() -> None:
 
 
 def validate_links() -> None:
-    for path in (ROOT / "README.md", ROOT / "AGENTS.md", ROOT / "docs" / "beginner-guide.md", ROOT / "docs" / "PRODUCT.md"):
+    md_files = [
+        ROOT / "README.md",
+        ROOT / "AGENTS.md",
+        ROOT / "SYSTEM-FLOW.md",
+        *sorted((ROOT / "docs").glob("*.md")),
+        *sorted((ROOT / "knowledge").glob("*.md")),
+        *sorted(SKILLS_ROOT.glob("*/SKILL.md")),
+        *sorted(SKILLS_ROOT.glob("*/references/**/*.md")),
+    ]
+    for path in md_files:
         if not path.is_file():
             continue
         for target in LINK_RE.findall(read_text(path)):
@@ -127,15 +144,19 @@ def validate_install() -> None:
 
 
 def validate_tests() -> None:
+    run([sys.executable, "-B", str(ROOT / "tools" / "sync_training_progression.py"), "--check"])
     checks = [
         "skills/douyin-question-distiller/scripts/test_distill_report.py",
         "tools/test_video_learning.py",
         "tools/test_learning_outputs.py",
         "tools/test_installer.py",
+        "tools/test_product_safety.py",
+        "tools/test_device.py",
         "skills/training-system/scripts/Test-TrainingSystemInspectReadOnly.py",
         "skills/training-system/scripts/Test-TrainingSystemPortability.py",
         "skills/training-expert-library/scripts/validate_expert_library.py",
         "skills/nutrition-system/scripts/test_nutrition_system.py",
+        "tools/test_health_db.py",
     ]
     for relative in checks:
         run([sys.executable, "-B", str(ROOT / relative)])
@@ -150,7 +171,7 @@ def main() -> None:
     validate_repository_hygiene()
     validate_tests()
     validate_install()
-    print("OK: Keshig bundle is portable, privacy-clean, and installable.")
+    print("OK: Keshig bundle passed the configured publication, portability and installation checks.")
     print(f"Validated Skills: {len(names)}")
 
 

@@ -45,7 +45,16 @@
     "minimum_days": 14,
     "minimum_adherence_days_per_week": 5,
     "max_single_adjustment_kcal": 150,
-    "single_variable_only": true
+    "single_variable_only": true,
+    "ewma_alpha": 0.2,
+    "rate_guardrails": {
+      "fat_loss_weekly_pct_range": [-1.0, -0.3],
+      "muscle_gain_monthly_pct_range": [0.5, 1.5]
+    },
+    "phase_coupling": {
+      "deload_sync": "maintenance_calories_keep_protein_fat",
+      "diet_break_interval_weeks": 10
+    }
   },
   "sources": []
 }

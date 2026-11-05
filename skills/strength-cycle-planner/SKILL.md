@@ -5,6 +5,8 @@ description: 为深蹲、卧推、硬拉、负重引体、推举等力量主项�
 
 # Keshig — 力量训练周期规划
 
+个人周期与临时文件必须位于源码和整个已安装 `skills/` 目录之外。已有系统时先运行 `training-system` 的 `inspect`，写入前运行 `check-path --path <目标>`；独立使用时也检查实际路径和祖先目录中的 `keshig.manifest.json`、`SKILL.md`。没有安全的个人目录时先确认位置，不回退到当前工作目录。
+
 为一个明确的力量动作生成可执行、可反馈、可调整的 8—12 周周期。把计划视为待验证的训练假设，不把固定重量表当作必须完成的命令。
 
 ## 交付形态
@@ -21,6 +23,7 @@ description: 为深蹲、卧推、硬拉、负重引体、推举等力量主项�
 
 生成或调整计划前读取：
 
+- [周期数据契约](references/cycle-contract.md) 与 [周期 JSON 示例](references/cycle-contract.example.json)：8—12 周周期的 JSON 结构化协议，配合 `scripts/validate_cycle.py` 强制校验多组 `首组 RPE→末组 RPE` 箭头格式、回退组保护规则、负重自重总系统负荷与真实减量周。
 - [周期设计规则](references/cycle-design-rules.md)：底层模型、阶段选择、动作差异和调整规则。
 - [证据基础](references/evidence-base.md)：说明周期适用边界、来源和最新指南核验规则。
 - [训练专家选择协议](../training-expert-library/references/expert-selection-contract.md)：在计划结构、力量瓶颈或训练阶段变量会改变周期时读取最少必要模块。
@@ -117,7 +120,7 @@ description: 为深蹲、卧推、硬拉、负重引体、推举等力量主项�
 
 ### 8. 保存周期文件
 
-- 用户指定输出位置时使用该位置；否则先读取已初始化系统的 `系统/keshig-system.json`，把专项周期 JSON 与 Markdown 保存到 `output_locations.cycles`；只有尚未建立系统配置时，才保存到 `KESHIG_FITNESS_HOME/plans/` 或当前工作目录的 `fitness-output/plans/`。客户交付或产品样例只使用脱敏资料。
+- 用户指定输出位置时使用该位置；否则先读取已初始化系统的 `系统/keshig-system.json`，把专项周期 JSON 与 Markdown 保存到 `output_locations.cycles`；尚未建立系统配置时，只保存到仓库外的 `KESHIG_FITNESS_HOME/plans/` 或用户指定的个人目录。公开产品样例只使用独立构造的虚构资料。
 - 文件名必须为 `YYYY年MM月DD日-训练对象-周期目标训练计划.md`。单项示例：`2026年07月28日-负重引体-3RM提升训练计划.md`；整套计划示例：`2026年07月29日-四日制全身-力量提升训练计划.md`。日期按 Asia/Shanghai 的首次制定日书写，月、日必须补零。
 - 同一计划的实质修改，保留首次制定日期并追加 `-v02`、`-v03` 等版本号；新周期使用新的制定日期。不得使用“最新版”“最终版”等不稳定名称，也不得覆盖已有文件。
 - 修订既有计划时，创建新版本后对表内处方做全文 RPE 审计：除单组顶组、测试尝试和明确标注的历史实际记录外，不得遗留 `多组 × 次数 @单一 RPE` 或静态 RPE 区间的旧式处方。

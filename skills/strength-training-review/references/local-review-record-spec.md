@@ -1,6 +1,6 @@
 # Keshig 力量训练复盘本地记录规范
 
-每次复盘只创建或修订一个本地 Markdown 记录。用户指定目录时优先使用；否则先使用已初始化系统配置中的 `output_locations.reviews`，尚未建立系统配置时才使用 `KESHIG_FITNESS_HOME/reviews/` 或当前工作目录的 `fitness-output/reviews/`。
+每次复盘只创建或修订一个本地 Markdown 记录。用户指定目录时优先使用；否则先使用已初始化系统配置中的 `output_locations.reviews`，尚未建立系统配置时只使用仓库外的 `KESHIG_FITNESS_HOME/reviews/` 或用户明确指定的个人目录。写入前检查实际路径，禁止位于源码和整个技能目录内。
 
 ## 文件名
 

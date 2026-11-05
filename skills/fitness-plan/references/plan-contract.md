@@ -69,6 +69,12 @@ JSON 是状态与文字计划的唯一数据源。先验证 JSON，再据此写�
 
 计划书汇总公式固定为：直接组 `set_count × 周频次 × 1.0`，间接折算 `set_count × 周频次 × 0.5`，合计为两者之和，并逐项列出动作来源。固定 14 类肌群继续作为底层校验和计算全集，计划书只显示合计大于 0 的实际覆盖肌群。`0.5` 是统一的计划估算口径，不表示对每个人的精确生理刺激；计划量也不表示实际完成量。未知动作没有可靠映射时不得猜测，应先补充动作映射或更换为已定义动作。
 
+`validate_plan.py` 会自动输出 `volume_summary` 并执行容量与干扰审计（Warning 级）：
+- 单次单肌群直接组上限：P0/L1 > 8 组、L2/L3 > 10 组时预警单次疲劳与垃圾容量风险；
+- 周有效组数上限：P0 > 12 组、L1 > 16 组、L2 > 20 组、L3 > 22 组时预警可恢复上限（MRV）风险；
+- 推/拉直接组比例：周推直接组 > 周拉直接组的 1.5 倍（且推 ≥ 6 组）时预警结构失衡；
+- 可选顶层字段 `cardio_schedule`：记录有氧排程（`day_index`、`modality`、`intensity`、`minutes`、`timing_relative_to_lifting`、`separation_hours`），若高强度或高冲击跑步与下肢主项同日紧邻训练前或间隔 < 6 小时，自动发出干扰效应预警。
+
 ## 负荷与校准
 
 每个 `training_days[].exercises[]` 必须包含 `load`，不允许把“自行选择重量”留给使用者：
@@ -96,7 +102,7 @@ JSON 是状态与文字计划的唯一数据源。先验证 JSON，再据此写�
   "id": "daily_steps",
   "label": "日均步数",
   "kind": "daily_steps",
-  "source": "notion.activity.steps",
+  "source": "health_db.device_daily.steps",
   "status": "needs_baseline",
   "next_action": "先记录 7 天步数，再由 AI 确认下一阶段目标。"
 }

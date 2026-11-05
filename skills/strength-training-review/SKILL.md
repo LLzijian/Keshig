@@ -7,6 +7,8 @@ description: 复盘一次力量训练或一个训练周。支持按当前计划�
 
 把单次训练或一个训练周放回可验证的推进路径。先核对事实，再收集个人体感，最后形成下一次处方或周度决策；不得用客观数字替代用户的真实感受。
 
+个人复盘、索引与临时文件必须位于源码和整个已安装 `skills/` 目录之外。已有系统时先运行 `training-system` 的 `inspect`，写入前运行 `check-path --path <目标>`；独立使用时也检查实际路径和祖先目录中的 `keshig.manifest.json`、`SKILL.md`。没有安全的个人目录时先确认位置，不回退到当前工作目录。
+
 ## 共同训练判断协议
 
 处理训练数据、RPE、下一次调整、计划渐进或失败反馈时，先读 [训练数据判断与渐进协议](references/training-progression-protocol.md)。它统一力量、增肌、减脂保肌三类目标，允许有理由的多变量联合调整；优先于旧参考中的固定单变量和机械重复规则，不覆盖本 Skill 的数据读取、正式记录及计划写入权限。未知 RPE、体感或休息不抹掉已完成组；先给能确定的分析，影响具体决定的未知再轻量核实，不循环追问用户已表示不记得的内容。
@@ -16,11 +18,11 @@ description: 复盘一次力量训练或一个训练周。支持按当前计划�
 ## 必读上下文
 
 - 动态训练事实：用户直接提供的完整当次记录优先；用户授权且当前环境可访问外部训练记录时，再查询最近记录、恢复信息和体重。
-- 当前处方：读取用户明确指定的当前计划；未指定时先读取 `系统/keshig-system.json` 的 `output_locations.plans`，尚未建立系统配置时再检查 `KESHIG_FITNESS_HOME/plans/` 和当前工作目录的 `fitness-output/plans/`。不要把历史计划文件或保留副本当作当前处方。
-- 周期调整：需要审核或修改多周计划时，读取 [Keshig 周期调整规则](references/keshig-cycle-adjustment-rules.md)。即使没有安装周期规划 Skill，本 Skill 也必须能够完成调整判断。
+- 当前处方：读取用户明确指定的当前计划；未指定时先读取 `系统/keshig-system.json` 的 `output_locations.plans`，尚未建立系统配置时再检查仓库外的 `KESHIG_FITNESS_HOME/plans/`。不要把历史计划文件或保留副本当作当前处方。
+- 周期调整：需要审核或修改多周计划时，读取 [Keshig 周期调整规则](references/cycle-adjustment-rules.md)。即使没有安装周期规划 Skill，本 Skill 也必须能够完成调整判断。
 - 无周期推进：进入滚动或基准模式时，读取 [无周期滚动复盘规则](references/rolling-review-rules.md)。
 - 周训练阶段复盘：读取 [周训练复盘规则](references/weekly-review-rules.md) 和 [周训练复盘模板](references/weekly-review-template.md)。
-- 输出与沉淀：读取 [复盘输出规范](references/review-output-spec.md) 和 [本地记录规范](references/local-review-record-spec.md)。
+- 输出与沉淀：读取 [复盘输出规范](references/review-output-spec.md) 和 [本地记录规范](references/local-review-record-spec.md)，写入后可用 `scripts/validate_review.py` 校验 Frontmatter、8 段结构及 `待补全` 权限拦截。
 - 证据边界：读取 [证据基础](references/evidence-base.md)。
 - 专家知识：仅当营养、肌肥大、计划结构、力量瓶颈、反复中断或已获专业允许活动后的返场变量会改变复盘时，按 [训练专家选择协议](../training-expert-library/references/expert-selection-contract.md) 读取最少必要模块。
 
@@ -83,7 +85,7 @@ description: 复盘一次力量训练或一个训练周。支持按当前计划�
 
 ## 权限边界
 
-- 每次完成复盘后写入可移植的本地 Markdown 记录并更新索引。用户指定目录优先；否则先使用 `系统/keshig-system.json` 的 `output_locations.reviews`，尚未建立系统配置时才使用 `KESHIG_FITNESS_HOME/reviews/` 或当前工作目录的 `fitness-output/reviews/`。
+- 每次完成复盘后写入可移植的本地 Markdown 记录并更新索引。用户指定目录优先；否则先使用 `系统/keshig-system.json` 的 `output_locations.reviews`，尚未建立系统配置时只使用仓库外的 `KESHIG_FITNESS_HOME/reviews/` 或用户指定的个人目录。
 - 不得编造、补全或篡改外部原始训练记录；默认不写回外部服务。
 - 周期模式中，改变周次、动作、重量、次数、组数、RPE 路径、测试目标或后续周期，先给完整待确认方案；确认后创建新的 `-vNN.md`，不得覆盖旧版本。
 - 滚动模式中，可以直接给出下一次的小幅调整：按目标联合调整重量、次数、组数、休息与动作要求；增幅依据实际器械和本人表现，降重说明原因及恢复推进条件，不统一套固定百分比。

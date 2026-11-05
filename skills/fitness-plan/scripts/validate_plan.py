@@ -55,6 +55,61 @@ ALLOWED_MUSCLE_GROUPS = {
     "核心",
 }
 ALLOWED_MUSCLE_COEFFICIENTS = {0.5, 1.0}
+STAGE_SESSION_DIRECT_CAP = {"P0": 8, "L1": 8, "L2": 10, "L3": 10}
+STAGE_WEEKLY_EFFECTIVE_CAP = {"P0": 12.0, "L1": 16.0, "L2": 20.0, "L3": 22.0}
+
+
+def compute_volume_summary(plan: dict[str, Any]) -> dict[str, Any]:
+    schedule = plan.get("weekly_schedule") if isinstance(plan.get("weekly_schedule"), list) else []
+    days = plan.get("training_days") if isinstance(plan.get("training_days"), list) else []
+    day_freq: dict[str, int] = {}
+    for entry in schedule:
+        if isinstance(entry, dict) and isinstance(entry.get("day_id"), str):
+            did = entry["day_id"]
+            day_freq[did] = day_freq.get(did, 0) + 1
+
+    pattern_weekly: dict[str, int] = {p: 0 for p in sorted(ALLOWED_PATTERN_GROUPS)}
+    muscle_weekly: dict[str, dict[str, float]] = {
+        m: {"direct": 0.0, "indirect": 0.0, "total": 0.0} for m in sorted(ALLOWED_MUSCLE_GROUPS)
+    }
+    session_direct: dict[str, dict[str, int]] = {}
+
+    for day in days:
+        if not isinstance(day, dict) or not isinstance(day.get("id"), str):
+            continue
+        did = day["id"]
+        freq = day_freq.get(did, 0)
+        per_day_muscle: dict[str, int] = {}
+        for ex in day.get("exercises") or []:
+            if not isinstance(ex, dict):
+                continue
+            pres = ex.get("prescription") if isinstance(ex.get("prescription"), dict) else {}
+            sc = pres.get("set_count")
+            if not isinstance(sc, int) or isinstance(sc, bool) or sc < 1:
+                continue
+            pg = ex.get("pattern_group")
+            if pg in pattern_weekly:
+                pattern_weekly[pg] += sc * freq
+            for contrib in ex.get("muscle_contributions") or []:
+                if not isinstance(contrib, dict):
+                    continue
+                mg = contrib.get("muscle_group")
+                coeff = contrib.get("coefficient")
+                if mg in muscle_weekly and coeff in ALLOWED_MUSCLE_COEFFICIENTS:
+                    if coeff == 1.0:
+                        per_day_muscle[mg] = per_day_muscle.get(mg, 0) + sc
+                        muscle_weekly[mg]["direct"] += sc * freq
+                    elif coeff == 0.5:
+                        muscle_weekly[mg]["indirect"] += sc * freq * 0.5
+                    muscle_weekly[mg]["total"] = muscle_weekly[mg]["direct"] + muscle_weekly[mg]["indirect"]
+        session_direct[did] = per_day_muscle
+
+    return {
+        "day_frequencies": day_freq,
+        "pattern_weekly_sets": {k: v for k, v in pattern_weekly.items() if v > 0},
+        "muscle_weekly_sets": {k: v for k, v in muscle_weekly.items() if v["total"] > 0},
+        "session_direct_sets": session_direct,
+    }
 
 
 def load_plan(path: Path) -> dict[str, Any]:
@@ -405,6 +460,72 @@ def validate_plan(plan: dict[str, Any]) -> tuple[list[str], list[str]]:
     if not isinstance(plan["assumptions"], list):
         errors.append("assumptions must be an array")
 
+    # Scientific volume landmarks, push/pull balance, and concurrent cardio interference checks
+    vol = compute_volume_summary(plan)
+    session_cap = STAGE_SESSION_DIRECT_CAP.get(overall_stage or "L1", 10)
+    weekly_cap = STAGE_WEEKLY_EFFECTIVE_CAP.get(overall_stage or "L1", 20.0)
+
+    for did, muscle_map in vol["session_direct_sets"].items():
+        for mg, d_sets in muscle_map.items():
+            if d_sets > session_cap:
+                warnings.append(
+                    f"single-session volume cap exceeded in {did} for {mg}: {d_sets} direct sets (recommended <={session_cap} for stage {overall_stage}); consider splitting across sessions to avoid junk volume"
+                )
+
+    for mg, stats in vol["muscle_weekly_sets"].items():
+        if stats["total"] > weekly_cap:
+            warnings.append(
+                f"weekly effective volume for {mg} is {stats['total']} sets, exceeding stage {overall_stage} landmark ({weekly_cap} sets/week); verify recovery capacity (MRV)"
+            )
+
+    push_sets = vol["pattern_weekly_sets"].get("推", 0)
+    pull_sets = vol["pattern_weekly_sets"].get("拉", 0)
+    if push_sets >= 6 and push_sets > pull_sets * 1.5:
+        warnings.append(
+            f"push/pull structural imbalance: weekly direct push sets ({push_sets}) exceed pull sets ({pull_sets}) by >1.5x"
+        )
+
+    cardio_schedule = plan.get("cardio_schedule")
+    if cardio_schedule is not None:
+        if not isinstance(cardio_schedule, list):
+            errors.append("cardio_schedule must be an array when provided")
+        else:
+            lower_body_day_indices: set[int] = set()
+            day_by_id = {d.get("id"): d for d in days if isinstance(d, dict) and isinstance(d.get("id"), str)}
+            for entry in schedule:
+                if not isinstance(entry, dict):
+                    continue
+                did = entry.get("day_id")
+                d_idx = entry.get("day_index")
+                day_obj = day_by_id.get(did) if isinstance(did, str) else None
+                if day_obj and isinstance(d_idx, int):
+                    if any(
+                        isinstance(ex, dict) and ex.get("pattern_group") in {"蹲", "髋铰链", "单腿"}
+                        for ex in (day_obj.get("exercises") or [])
+                    ):
+                        lower_body_day_indices.add(d_idx)
+
+            for c_idx, c_item in enumerate(cardio_schedule):
+                if not isinstance(c_item, dict):
+                    errors.append(f"cardio_schedule[{c_idx}] must be an object")
+                    continue
+                c_day = c_item.get("day_index")
+                modality = str(c_item.get("modality") or "")
+                intensity = str(c_item.get("intensity") or "").lower()
+                timing = str(c_item.get("timing_relative_to_lifting") or "").lower()
+                sep_h = c_item.get("separation_hours")
+                high_interference = (
+                    "跑" in modality
+                    or "run" in modality.lower()
+                    or "high" in intensity
+                    or "hiit" in intensity
+                )
+                if isinstance(c_day, int) and c_day in lower_body_day_indices and high_interference:
+                    if timing == "before_lifting" or (isinstance(sep_h, (int, float)) and sep_h < 6):
+                        warnings.append(
+                            f"concurrent training interference on day_index={c_day}: high-impact/high-intensity cardio ({modality}/{intensity}) scheduled before or <6h from lower-body resistance training"
+                        )
+
     return errors, warnings
 
 
@@ -420,7 +541,8 @@ def main() -> int:
         errors, warnings = [str(exc)], []
 
     if args.json_output:
-        print(json.dumps({"valid": not errors, "errors": errors, "warnings": warnings}, ensure_ascii=False, indent=2))
+        vol_summary = compute_volume_summary(plan) if isinstance(plan, dict) and not errors else {}
+        print(json.dumps({"valid": not errors, "errors": errors, "warnings": warnings, "volume_summary": vol_summary}, ensure_ascii=False, indent=2))
     else:
         for message in errors:
             print(f"ERROR: {message}")

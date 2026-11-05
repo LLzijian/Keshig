@@ -1,0 +1,398 @@
+{
+  "cycle_meta": {
+    "title": "8周卧推力量提升专项周期",
+    "version": "v01",
+    "created_date": "2026-11-05",
+    "subject_mode": "self",
+    "subject_id": "self",
+    "movement": "杠铃平板卧推",
+    "is_weighted_calisthenics": false,
+    "baseline_bodyweight_kg": null,
+    "duration_weeks": 8,
+    "weekly_exposures": 2,
+    "min_increment_kg": 2.5,
+    "goal_summary": "在动作标准不变（触胸停顿1秒）的前提下，巩固80kg顶组并提升82.5kg—85kg高强度组稳定性"
+  },
+  "baseline_facts": {
+    "source_date": "2026-11-01",
+    "verified_performance": "75kg 4×5 末组 RPE 8，80kg 1×3 RPE 8.5",
+    "e1rm_kg": 89.0,
+    "e1rm_is_inferred": true,
+    "equipment_notes": "标准20kg奥杆，最小可用杠铃片1.25kg（双侧最小步长2.5kg）"
+  },
+  "phases": [
+    {
+      "name": "积累期",
+      "phase_type": "accumulation",
+      "start_week": 1,
+      "end_week": 3,
+      "goal": "积累有效动作容量并稳定触胸节奏"
+    },
+    {
+      "name": "强度期",
+      "phase_type": "intensification",
+      "start_week": 4,
+      "end_week": 6,
+      "goal": "提升顶组绝对负荷并维持回退组质量"
+    },
+    {
+      "name": "实现期",
+      "phase_type": "realization",
+      "start_week": 7,
+      "end_week": 7,
+      "goal": "在高准备度下验证82.5kg—85kg目标组"
+    },
+    {
+      "name": "减量与总结期",
+      "phase_type": "deload",
+      "start_week": 8,
+      "end_week": 8,
+      "goal": "削减累积疲劳并沉淀下一周期基准"
+    }
+  ],
+  "weeks": [
+    {
+      "week_number": 1,
+      "phase_type": "accumulation",
+      "exposures": [
+        {
+          "exposure_id": "w1-e1",
+          "day_label": "上肢A（强度与回退）",
+          "primary_duty": "intensity",
+          "work_sets": [
+            {
+              "role": "top",
+              "set_count": 1,
+              "reps": "4",
+              "load_kg": 77.5,
+              "rpe_prescription": "RPE 7.5"
+            },
+            {
+              "role": "backoff",
+              "set_count": 3,
+              "reps": "6",
+              "load_kg": 70.0,
+              "rpe_prescription": "首组 RPE 6.5→末组 RPE 7.5",
+              "backoff_rule": "若顶组 RPE > 8，回退组下调 2.5kg 至 67.5kg"
+            }
+          ],
+          "fallback_branch": {
+            "trigger": "热身或顶组出现睡眠不足/准备度黄灯（RPE 漂移 >= 1）",
+            "replacement_prescription": "75kg 1×4 @RPE 7.5 + 67.5kg 2×6 @首组 RPE 6.5→末组 RPE 7.5",
+            "replacement_set_count": 3,
+            "is_replacement": true
+          }
+        },
+        {
+          "exposure_id": "w1-e2",
+          "day_label": "上肢B（容量与技术）",
+          "primary_duty": "volume",
+          "work_sets": [
+            {
+              "role": "work",
+              "set_count": 4,
+              "reps": "6",
+              "load_kg": 70.0,
+              "rpe_prescription": "首组 RPE 6→末组 RPE 7.5"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "week_number": 2,
+      "phase_type": "accumulation",
+      "exposures": [
+        {
+          "exposure_id": "w2-e1",
+          "day_label": "上肢A（强度与回退）",
+          "primary_duty": "intensity",
+          "work_sets": [
+            {
+              "role": "top",
+              "set_count": 1,
+              "reps": "4",
+              "load_kg": 77.5,
+              "rpe_prescription": "RPE 7.5"
+            },
+            {
+              "role": "backoff",
+              "set_count": 4,
+              "reps": "6",
+              "load_kg": 70.0,
+              "rpe_prescription": "首组 RPE 6.5→末组 RPE 8",
+              "backoff_rule": "若顶组 RPE > 8，回退组维持 3 组而非加到 4 组"
+            }
+          ]
+        },
+        {
+          "exposure_id": "w2-e2",
+          "day_label": "上肢B（容量与技术）",
+          "primary_duty": "volume",
+          "work_sets": [
+            {
+              "role": "work",
+              "set_count": 4,
+              "reps": "6",
+              "load_kg": 72.5,
+              "rpe_prescription": "首组 RPE 6.5→末组 RPE 8"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "week_number": 3,
+      "phase_type": "accumulation",
+      "exposures": [
+        {
+          "exposure_id": "w3-e1",
+          "day_label": "上肢A（强度与回退）",
+          "primary_duty": "intensity",
+          "work_sets": [
+            {
+              "role": "top",
+              "set_count": 1,
+              "reps": "4",
+              "load_kg": 80.0,
+              "rpe_prescription": "RPE 8"
+            },
+            {
+              "role": "backoff",
+              "set_count": 4,
+              "reps": "6",
+              "load_kg": 72.5,
+              "rpe_prescription": "首组 RPE 6.5→末组 RPE 8",
+              "backoff_rule": "若 80kg 顶组 RPE >= 8.5，回退组用 70kg 3×6"
+            }
+          ]
+        },
+        {
+          "exposure_id": "w3-e2",
+          "day_label": "上肢B（容量与技术）",
+          "primary_duty": "volume",
+          "work_sets": [
+            {
+              "role": "work",
+              "set_count": 4,
+              "reps": "6",
+              "load_kg": 72.5,
+              "rpe_prescription": "首组 RPE 6.5→末组 RPE 8"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "week_number": 4,
+      "phase_type": "intensification",
+      "exposures": [
+        {
+          "exposure_id": "w4-e1",
+          "day_label": "上肢A（强度与回退）",
+          "primary_duty": "intensity",
+          "work_sets": [
+            {
+              "role": "top",
+              "set_count": 1,
+              "reps": "3",
+              "load_kg": 80.0,
+              "rpe_prescription": "RPE 7.5"
+            },
+            {
+              "role": "backoff",
+              "set_count": 3,
+              "reps": "5",
+              "load_kg": 75.0,
+              "rpe_prescription": "首组 RPE 6.5→末组 RPE 8",
+              "backoff_rule": "顶组超标时回退组降为 72.5kg 3×5"
+            }
+          ]
+        },
+        {
+          "exposure_id": "w4-e2",
+          "day_label": "上肢B（容量与技术）",
+          "primary_duty": "volume",
+          "work_sets": [
+            {
+              "role": "work",
+              "set_count": 4,
+              "reps": "5",
+              "load_kg": 72.5,
+              "rpe_prescription": "首组 RPE 6.5→末组 RPE 7.5"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "week_number": 5,
+      "phase_type": "intensification",
+      "exposures": [
+        {
+          "exposure_id": "w5-e1",
+          "day_label": "上肢A（强度与回退）",
+          "primary_duty": "intensity",
+          "work_sets": [
+            {
+              "role": "top",
+              "set_count": 1,
+              "reps": "3",
+              "load_kg": 82.5,
+              "rpe_prescription": "RPE 8"
+            },
+            {
+              "role": "backoff",
+              "set_count": 3,
+              "reps": "5",
+              "load_kg": 75.0,
+              "rpe_prescription": "首组 RPE 7→末组 RPE 8",
+              "backoff_rule": "顶组 RPE > 8.5 时回退组降为 72.5kg 3×5"
+            }
+          ]
+        },
+        {
+          "exposure_id": "w5-e2",
+          "day_label": "上肢B（容量与技术）",
+          "primary_duty": "volume",
+          "work_sets": [
+            {
+              "role": "work",
+              "set_count": 4,
+              "reps": "5",
+              "load_kg": 75.0,
+              "rpe_prescription": "首组 RPE 6.5→末组 RPE 8"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "week_number": 6,
+      "phase_type": "intensification",
+      "exposures": [
+        {
+          "exposure_id": "w6-e1",
+          "day_label": "上肢A（强度与回退）",
+          "primary_duty": "intensity",
+          "work_sets": [
+            {
+              "role": "top",
+              "set_count": 1,
+              "reps": "3",
+              "load_kg": 82.5,
+              "rpe_prescription": "RPE 8"
+            },
+            {
+              "role": "backoff",
+              "set_count": 3,
+              "reps": "4",
+              "load_kg": 77.5,
+              "rpe_prescription": "首组 RPE 7→末组 RPE 8.5",
+              "backoff_rule": "顶组超标时回退组保持 75kg 3×4"
+            }
+          ]
+        },
+        {
+          "exposure_id": "w6-e2",
+          "day_label": "上肢B（技术与速度）",
+          "primary_duty": "technique",
+          "work_sets": [
+            {
+              "role": "technique",
+              "set_count": 3,
+              "reps": "5",
+              "load_kg": 72.5,
+              "rpe_prescription": "首组 RPE 6→末组 RPE 7"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "week_number": 7,
+      "phase_type": "realization",
+      "exposures": [
+        {
+          "exposure_id": "w7-e1",
+          "day_label": "上肢A（实现日）",
+          "primary_duty": "intensity",
+          "work_sets": [
+            {
+              "role": "top",
+              "set_count": 1,
+              "reps": "2—3",
+              "load_kg": 85.0,
+              "rpe_prescription": "RPE 8.5"
+            },
+            {
+              "role": "backoff",
+              "set_count": 2,
+              "reps": "4",
+              "load_kg": 77.5,
+              "rpe_prescription": "首组 RPE 7→末组 RPE 8",
+              "backoff_rule": "若顶组已达 RPE 9，回退组降为 75kg 2×4"
+            }
+          ]
+        },
+        {
+          "exposure_id": "w7-e2",
+          "day_label": "上肢B（轻量维持）",
+          "primary_duty": "technique",
+          "work_sets": [
+            {
+              "role": "technique",
+              "set_count": 3,
+              "reps": "5",
+              "load_kg": 70.0,
+              "rpe_prescription": "首组 RPE 6→末组 RPE 7"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "week_number": 8,
+      "phase_type": "deload",
+      "exposures": [
+        {
+          "exposure_id": "w8-e1",
+          "day_label": "上肢A（减量日）",
+          "primary_duty": "deload",
+          "work_sets": [
+            {
+              "role": "work",
+              "set_count": 3,
+              "reps": "5",
+              "load_kg": 67.5,
+              "rpe_prescription": "首组 RPE 5.5→末组 RPE 6.5"
+            }
+          ]
+        },
+        {
+          "exposure_id": "w8-e2",
+          "day_label": "上肢B（减量技术日）",
+          "primary_duty": "deload",
+          "work_sets": [
+            {
+              "role": "technique",
+              "set_count": 2,
+              "reps": "5",
+              "load_kg": 65.0,
+              "rpe_prescription": "首组 RPE 5.5→末组 RPE 6"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "progression_and_adjustment_rules": {
+    "top_set_rule": "顶组在目标次数内且 RPE <= 8 时按计划进入下周负荷；若末次动作变形或 RPE 超标 >= 0.5，下周保持同重量。",
+    "backoff_rule": "回退组重量受当天顶组实际 RPE 约束，顶组失手或超标时立即按 backoff_rule 下调 2.5kg 或减 1 组。",
+    "autoreguation_readiness_rule": "结合个人 7—28 天 HRV、静息心率、睡眠与晨起握力滚动基线：准备度 yellow 时直接启用当日 fallback_branch；准备度 red 时将第 8 周减量提前执行。",
+    "deload_trigger_rule": "连续两次同类暴露掉次数或同重量 RPE 漂移 >= 1 级且恢复恶化时，提前进入减量周。"
+  },
+  "assumptions": [
+    "e1RM 89.0kg 由 80kg×3 @RPE 8.5 经 Epley 公式推断，仅作周期起点参考，不等于实测极限"
+  ]
+}
