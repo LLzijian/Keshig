@@ -1,6 +1,8 @@
 # 来源与许可
 
-Keshig 自有内容（README、AGENTS、device/、schema/、命名与结构改造）为 MIT。
+Keshig 自有内容（README、AGENTS、device/、schema/、命名与结构改造）采用
+[PolyForm Noncommercial 1.0.0](LICENSE)——**仅限非商业使用**（个人使用、学习、研究、
+公益与政府机构使用均允许；销售、商业服务、商业产品集成等商业利用不在授权范围内）。
 下列上游材料按各自许可保留，原文见 `licenses/`。
 
 | 上游 | 用途 | 许可 | 在 Keshig 中的位置 |

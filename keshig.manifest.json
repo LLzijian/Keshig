@@ -2,7 +2,7 @@
   "name": "keshig",
   "display_name": "Keshig（怯薛）",
   "version": "0.4.0",
-  "license": "MIT",
+  "license": "PolyForm-Noncommercial-1.0.0",
   "language": "zh-CN",
   "description": "健身与饮食的操作系统：训练方法、营养口径、设备数据、记录结构；交互全部在 Agent 对话中完成",
   "skills": [

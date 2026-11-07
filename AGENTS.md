@@ -17,8 +17,8 @@
 
 - **`device/` 对上游设备桥（VitalDock）只读**：只 `subprocess` 调它的 CLI、读 stdout JSON；
   不 import 其源码、不写其目录、不改其文件。改动方向只能是适配器，不是上游。
-- **不把设备值与手记合并成一张表**：`vitals`/`activity` 存「人报的」，`device_*` 存「表测的」，
-  两者各说各话，对照放在查询里并排看。
+- **不把设备值与手记合并成一张表**：`body_vitals`/`body_grip`/`exercise_sessions`/`exercise_sets`/`diet_*` 存「人报的」，`body_device_daily`/`exercise_device_sessions` 存「表测的」，
+  两者各说各话，对照放在查询视图（`v_daily_overview`、`v_exercise_day`）里并排看。
 - **不发明口径**：摄入与训练目标一律引用 `knowledge/` 与用户自己钉下的计划书，
   缺口径就问，不拿通用表格冒充用户口径。
 - **推断与实测分开写**：推断必须标明。

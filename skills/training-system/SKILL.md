@@ -24,7 +24,7 @@ description: 初始化、升级、诊断、校验和迁移 Keshig 本地训练�
 随后依次完成：
 
 1. **先主动询问记录保存位置**，给出三个选项并允许用户自报路径，不要自行决定：
-   - **跟随当前 Agent 的记忆/数据目录**（默认，免打理、随 Agent 配置走；例如某些 Agent 平台提供的 profile 级 memory/数据目录）——适合「装上就忘」的用户；
+   - **当前 Agent 的 `data` 目录**（默认 `<agent_root>/data`，免打理、随 Agent 配置走，已有 `health.db` 时自动原地接管并升级至 Schema v2）——适合「装上就忘」的用户；
    - **可见的个人文件夹**（如文档库中新建「我的健身系统」）——适合想自己翻看、备份或网盘同步的用户；
    - **用户自定义路径**。
    选定后先运行 `check-path --path <目标>`，通过后才 `bootstrap`。个人系统必须位于源码与已安装的整个 `skills/` 目录之外。
@@ -70,7 +70,7 @@ description: 初始化、升级、诊断、校验和迁移 Keshig 本地训练�
 ## 命令
 
 ```bash
-python scripts/training_system.py bootstrap --target "<空目录>"
+python scripts/training_system.py bootstrap --target "<个人数据目录，默认 <agent_root>/data>"
 python scripts/training_system.py doctor --root "<系统根目录>"
 python scripts/training_system.py inspect --root "<系统根目录>"
 python scripts/training_system.py upgrade --root "<系统根目录>"
@@ -79,9 +79,12 @@ python scripts/training_system.py import-private-pack --root "<系统根目录>"
 python scripts/training_system.py validate --root "<系统根目录>"
 python scripts/training_system.py check-path --path "<个人目录或输出文件>"
 python scripts/training_system.py db-init --root "<系统根目录>"
-python scripts/health_db.py log-vitals --root "<系统根目录>" --weight-kg 75.2 --sleep-h 7.5
+python scripts/health_db.py migrate --root "<系统根目录>"
+python scripts/health_db.py body --root "<系统根目录>" --weight-kg 75.2 --sleep-h 7.5
 python scripts/health_db.py log-grip --root "<系统根目录>" --hand right --kg 52.0
-python scripts/health_db.py log-workout --root "<系统根目录>" --sport 力量 --sets-json "[...]"
+python scripts/health_db.py exercise --root "<系统根目录>" --sport 力量 --sets-json "[...]"
+python scripts/health_db.py diet --root "<系统根目录>" --meal 午餐 --kcal 750 --protein-g 45
+python scripts/health_db.py meta --root "<系统根目录>" --domain body --kind soreness_pec --value-num 2 --unit "1-10"
 python scripts/health_db.py sync-device --root "<系统根目录>" --history-days 28
 python scripts/health_db.py query-context --root "<系统根目录>" --days 14
 ```

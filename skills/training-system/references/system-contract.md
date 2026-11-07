@@ -12,7 +12,7 @@ Keshig 是一棵纯文件树，没有网页、面板或线上发布。所有读�
 - 当前执行基准：`个人训练系统/训练复盘与状态/当前执行基准`。
 - 训练复盘：复盘文件及其 `INDEX.md`。
 - 状态与接回：状态档案与接回卡；若状态过期，不能把旧计划当作今日处方。
-- 动态训练/体重：用户本轮提供或本地记录（含 `<系统根目录>/系统/health.sqlite3` 中的手记表 `vitals`/`activity`/`workout_sets`/`intake`/`grip` 与设备表 `device_*`）；缺失、过期或冲突时通过 `v_daily_overview` 与 `health_db.py query-context` 并排显示，不静默合并或沿用旧值。
+- 动态训练/体重：用户本轮提供或本地统一记录库（`<agent_root>/data/health.db` 或 `<系统根目录>/系统/health.sqlite3` 中的三域手记表 `body_vitals`/`body_grip`/`exercise_sessions`/`exercise_sets`/`diet_entries`/`diet_food_est`/`diet_targets`/`meta_*` 与设备表 `body_device_daily`/`exercise_device_sessions`/`meta_device_fetch`）；缺失、过期或冲突时通过 `v_daily_overview`、`v_exercise_day` 与 `health_db.py query-context` 并排显示，不静默合并或沿用旧值。
 
 ## 正式产物归属
 

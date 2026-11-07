@@ -24,7 +24,7 @@ Claude Code 用 `--platform claude`，其他兼容 Agent 用 `agents`；需要�
 
 Codex 默认使用共享的 `~/.agents/skills`。已有指向该主目录的 Codex/Claude 入口联接会保留；自定义 `CODEX_HOME` 仍有效，任意其他目录联接仍拒绝安装。0.3.1 开始要求个人系统位于源码和技能目录之外；发现旧数据位于这些目录时先保留原件，制定单独的迁移方案，不自动移动或删除。
 
-0.4.0 起，个人系统根目录新增 `系统/health.sqlite3` 记录库（手记表 `vitals`/`activity`/`workout_sets`/`intake`/`grip` 与设备表 `device_*` 分表并排）。`bootstrap` 自动建库；已有系统运行 `upgrade` 时若数据库已存在但缺表，会按 `schema/` 幂等补齐，不触碰既有记录。
+0.4.0 起，个人系统采用三域统一记录库 Schema v2（身体 `body_*`、运动 `exercise_*`、饮食 `diet_*`、跨域 `meta_*`，默认位于 `<agent_root>/data/health.db` 或 `<个人系统>/系统/health.sqlite3`）。`bootstrap` 自动建库或接管已有 `health.db`；旧版（v1）数据库运行 `upgrade` 或 `health_db.py migrate` 时会自动先备份至 `backups/` 再无损迁移表名与 `ext` 扩展列，不丢失任何既有记录。
 
 ## 升级会做什么
 

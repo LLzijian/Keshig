@@ -1,5 +1,15 @@
 #!/usr/bin/env python3
-"""SQLite data layer for Keshig: side-by-side manual & device records, per-set logs, and readiness."""
+"""Keshig 统一记录库：身体 / 运动 / 饮食三域，手记与设备分表并排，schema v2 自动迁移。
+
+域结构（schema v2，PRAGMA user_version = 2）：
+  身体  body_vitals / body_grip（手记） + body_device_daily（VitalDock）
+  运动  exercise_sessions / exercise_sets（手记） + exercise_device_sessions（设备）
+  饮食  diet_entries / diet_food_est / diet_targets（手记确认链）
+  跨域  meta_assumptions / meta_observations / meta_slots / meta_coach_log / meta_device_fetch
+
+扩展规则：新字段先进各表 ext JSON 列；全新记录类型先进 meta_observations；
+被广泛使用后才提升为正式列（升 user_version）。设备与手记永不合并，并排只在视图里。
+"""
 
 from __future__ import annotations
 
@@ -7,6 +17,7 @@ import argparse
 import datetime as dt
 import json
 import math
+import shutil
 import sqlite3
 import sys
 from pathlib import Path
@@ -18,29 +29,67 @@ import training_system as system
 
 DB_RELATIVE = Path("系统/health.sqlite3")
 REPO_SCHEMA_DIR = HERE.parents[2] / "schema"
+SCHEMA_VERSION = 2
 
 REQUIRED_TABLES = (
-    "vitals",
-    "activity",
-    "workout_sets",
-    "intake",
-    "slots",
-    "coach_log",
-    "target",
-    "assumption",
-    "food_est",
-    "device_daily",
-    "device_activity",
-    "device_fetch",
-    "grip",
+    "body_vitals",
+    "body_grip",
+    "body_device_daily",
+    "exercise_sessions",
+    "exercise_sets",
+    "exercise_device_sessions",
+    "diet_entries",
+    "diet_food_est",
+    "diet_targets",
+    "meta_assumptions",
+    "meta_observations",
+    "meta_slots",
+    "meta_coach_log",
+    "meta_device_fetch",
 )
 REQUIRED_VIEWS = (
-    "v_device_day",
+    "v_body_device_day",
     "v_daily_overview",
+    "v_exercise_day",
+)
+
+# v1 → v2 表名映射（ALTER TABLE RENAME 保数据迁移）
+V1_TABLE_RENAMES = {
+    "vitals": "body_vitals",
+    "grip": "body_grip",
+    "device_daily": "body_device_daily",
+    "activity": "exercise_sessions",
+    "workout_sets": "exercise_sets",
+    "device_activity": "exercise_device_sessions",
+    "intake": "diet_entries",
+    "food_est": "diet_food_est",
+    "target": "diet_targets",
+    "assumption": "meta_assumptions",
+    "slots": "meta_slots",
+    "coach_log": "meta_coach_log",
+    "device_fetch": "meta_device_fetch",
+}
+V1_COLUMN_RENAMES = {
+    "exercise_sets": {"activity_id": "session_id"},
+}
+V1_VIEWS_TO_DROP = ("v_device_day", "v_daily_overview")
+
+# 设备日指标的已知词表；records 中 metrics 字典里的其他数值字段也会透传落库
+KNOWN_DEVICE_METRICS = (
+    ("resting_hr", "bpm"),
+    ("sleep_secs", "s"),
+    ("sleep_score", "score"),
+    ("ctl", "load"),
+    ("atl", "load"),
+    ("tsb", "load"),
+    ("hrv", "ms"),
+    ("hrv_sdnn", "ms"),
+    ("steps", "steps"),
+    ("weight_kg", "kg"),
 )
 
 FALLBACK_DDL = """
-CREATE TABLE IF NOT EXISTS vitals (
+CREATE TABLE IF NOT EXISTS body_vitals (
   date          TEXT NOT NULL,
   logged_at     TEXT NOT NULL,
   weight_kg     REAL,
@@ -52,10 +101,24 @@ CREATE TABLE IF NOT EXISTS vitals (
   measured_at   TEXT,
   device        TEXT,
   source        TEXT,
+  ext           TEXT CHECK (ext IS NULL OR json_valid(ext)),
   PRIMARY KEY (date, source)
 );
-
-CREATE TABLE IF NOT EXISTS activity (
+CREATE TABLE IF NOT EXISTS body_grip (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  date        TEXT NOT NULL,
+  logged_at   TEXT NOT NULL,
+  hand        TEXT NOT NULL,
+  trial       INTEGER,
+  kg          REAL NOT NULL,
+  device      TEXT,
+  protocol    TEXT,
+  measured_at TEXT,
+  source      TEXT,
+  ext         TEXT CHECK (ext IS NULL OR json_valid(ext))
+);
+CREATE INDEX IF NOT EXISTS idx_body_grip_date ON body_grip(date);
+CREATE TABLE IF NOT EXISTS exercise_sessions (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   date        TEXT NOT NULL,
   logged_at   TEXT NOT NULL,
@@ -68,12 +131,13 @@ CREATE TABLE IF NOT EXISTS activity (
   witness     INTEGER,
   slot_id     INTEGER,
   reported_tod TEXT,
-  source      TEXT
+  source      TEXT,
+  ext         TEXT CHECK (ext IS NULL OR json_valid(ext))
 );
-
-CREATE TABLE IF NOT EXISTS workout_sets (
+CREATE INDEX IF NOT EXISTS idx_exercise_sessions_date ON exercise_sessions(date);
+CREATE TABLE IF NOT EXISTS exercise_sets (
   id               INTEGER PRIMARY KEY AUTOINCREMENT,
-  activity_id      INTEGER,
+  session_id       INTEGER,
   date             TEXT NOT NULL,
   logged_at        TEXT NOT NULL,
   exercise         TEXT NOT NULL,
@@ -91,10 +155,12 @@ CREATE TABLE IF NOT EXISTS workout_sets (
   e1rm_is_inferred INTEGER DEFAULT 1,
   quality_note     TEXT,
   pain_flag        INTEGER DEFAULT 0,
-  source           TEXT DEFAULT 'manual'
+  source           TEXT DEFAULT 'manual',
+  ext              TEXT CHECK (ext IS NULL OR json_valid(ext))
 );
-
-CREATE TABLE IF NOT EXISTS intake (
+CREATE INDEX IF NOT EXISTS idx_exercise_sets_date ON exercise_sets(date);
+CREATE INDEX IF NOT EXISTS idx_exercise_sets_ex   ON exercise_sets(exercise, date);
+CREATE TABLE IF NOT EXISTS diet_entries (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   date        TEXT NOT NULL,
   logged_at   TEXT NOT NULL,
@@ -105,30 +171,23 @@ CREATE TABLE IF NOT EXISTS intake (
   fat_g       REAL,
   items       TEXT,
   is_training_day INTEGER,
-  source      TEXT
+  source      TEXT,
+  ext         TEXT CHECK (ext IS NULL OR json_valid(ext))
 );
-
-CREATE TABLE IF NOT EXISTS slots (
-  id              INTEGER PRIMARY KEY AUTOINCREMENT,
-  weekday         INTEGER,
-  occurrence_date TEXT,
-  time_hhmm       TEXT,
-  raw_text        TEXT,
-  sport           TEXT,
-  state           TEXT NOT NULL DEFAULT 'pending',
-  active          INTEGER DEFAULT 1,
-  created_at      TEXT
-);
-
-CREATE TABLE IF NOT EXISTS coach_log (
+CREATE INDEX IF NOT EXISTS idx_diet_entries_date ON diet_entries(date);
+CREATE TABLE IF NOT EXISTS diet_food_est (
   id        INTEGER PRIMARY KEY AUTOINCREMENT,
-  ts        TEXT NOT NULL,
-  kind      TEXT,
-  slot_id   INTEGER,
-  replied   INTEGER DEFAULT 0
+  item      TEXT UNIQUE NOT NULL,
+  unit      TEXT,
+  kcal      REAL, protein_g REAL, carb_g REAL, fat_g REAL,
+  basis     TEXT,
+  n_obs     INTEGER DEFAULT 1,
+  last_seen TEXT,
+  note      TEXT,
+  ext       TEXT CHECK (ext IS NULL OR json_valid(ext))
 );
-
-CREATE TABLE IF NOT EXISTS target (
+CREATE INDEX IF NOT EXISTS idx_diet_food_est_item ON diet_food_est(item);
+CREATE TABLE IF NOT EXISTS diet_targets (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   effective_date TEXT NOT NULL,
   day_type       TEXT NOT NULL,
@@ -140,39 +199,55 @@ CREATE TABLE IF NOT EXISTS target (
   staple_min     REAL, staple_max REAL,
   source         TEXT,
   note           TEXT,
-  logged_at      TEXT NOT NULL
+  logged_at      TEXT NOT NULL,
+  ext            TEXT CHECK (ext IS NULL OR json_valid(ext))
 );
-
-CREATE TABLE IF NOT EXISTS assumption (
+CREATE INDEX IF NOT EXISTS idx_diet_targets_date ON diet_targets(effective_date);
+CREATE TABLE IF NOT EXISTS meta_assumptions (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   key            TEXT NOT NULL,
   value          TEXT NOT NULL,
   condition      TEXT,
   effective_date TEXT NOT NULL,
   logged_at      TEXT NOT NULL,
-  note           TEXT
+  note           TEXT,
+  ext            TEXT CHECK (ext IS NULL OR json_valid(ext))
 );
-
-CREATE TABLE IF NOT EXISTS food_est (
+CREATE TABLE IF NOT EXISTS meta_observations (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  date       TEXT NOT NULL,
+  logged_at  TEXT NOT NULL,
+  domain     TEXT,
+  kind       TEXT NOT NULL,
+  value_num  REAL,
+  value_text TEXT,
+  unit       TEXT,
+  source     TEXT,
+  ext        TEXT CHECK (ext IS NULL OR json_valid(ext))
+);
+CREATE INDEX IF NOT EXISTS idx_meta_observations_date ON meta_observations(date);
+CREATE INDEX IF NOT EXISTS idx_meta_observations_kind ON meta_observations(kind, date);
+CREATE TABLE IF NOT EXISTS meta_slots (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  weekday         INTEGER,
+  occurrence_date TEXT,
+  time_hhmm       TEXT,
+  raw_text        TEXT,
+  sport           TEXT,
+  state           TEXT NOT NULL DEFAULT 'pending',
+  active          INTEGER DEFAULT 1,
+  created_at      TEXT,
+  ext             TEXT CHECK (ext IS NULL OR json_valid(ext))
+);
+CREATE TABLE IF NOT EXISTS meta_coach_log (
   id        INTEGER PRIMARY KEY AUTOINCREMENT,
-  item      TEXT UNIQUE NOT NULL,
-  unit      TEXT,
-  kcal      REAL, protein_g REAL, carb_g REAL, fat_g REAL,
-  basis     TEXT,
-  n_obs     INTEGER DEFAULT 1,
-  last_seen TEXT,
-  note      TEXT
+  ts        TEXT NOT NULL,
+  kind      TEXT,
+  slot_id   INTEGER,
+  replied   INTEGER DEFAULT 0,
+  ext       TEXT CHECK (ext IS NULL OR json_valid(ext))
 );
-
-CREATE INDEX IF NOT EXISTS idx_target_date         ON target(effective_date);
-CREATE INDEX IF NOT EXISTS idx_food_est_item       ON food_est(item);
-CREATE INDEX IF NOT EXISTS idx_activity_date       ON activity(date);
-CREATE INDEX IF NOT EXISTS idx_workout_sets_date   ON workout_sets(date);
-CREATE INDEX IF NOT EXISTS idx_workout_sets_ex     ON workout_sets(exercise, date);
-CREATE INDEX IF NOT EXISTS idx_intake_date         ON intake(date);
-CREATE INDEX IF NOT EXISTS idx_vitals_date         ON vitals(date);
-
-CREATE TABLE IF NOT EXISTS device_daily (
+CREATE TABLE IF NOT EXISTS body_device_daily (
   date             TEXT NOT NULL,
   metric           TEXT NOT NULL,
   value            REAL,
@@ -180,10 +255,11 @@ CREATE TABLE IF NOT EXISTS device_daily (
   source           TEXT,
   upstream_updated TEXT,
   fetched_at       TEXT NOT NULL,
+  ext              TEXT CHECK (ext IS NULL OR json_valid(ext)),
   PRIMARY KEY (date, metric)
 );
-
-CREATE TABLE IF NOT EXISTS device_activity (
+CREATE INDEX IF NOT EXISTS idx_body_device_daily_date ON body_device_daily(date);
+CREATE TABLE IF NOT EXISTS exercise_device_sessions (
   activity_id       TEXT PRIMARY KEY,
   source            TEXT,
   type              TEXT,
@@ -198,10 +274,11 @@ CREATE TABLE IF NOT EXISTS device_activity (
   elevation_m       REAL,
   training_load     REAL,
   platform_synced_at TEXT,
-  fetched_at        TEXT
+  fetched_at        TEXT,
+  ext               TEXT CHECK (ext IS NULL OR json_valid(ext))
 );
-
-CREATE TABLE IF NOT EXISTS device_fetch (
+CREATE INDEX IF NOT EXISTS idx_exercise_device_sessions_start ON exercise_device_sessions(started_at_local);
+CREATE TABLE IF NOT EXISTS meta_device_fetch (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   fetched_at   TEXT NOT NULL,
   tool         TEXT,
@@ -209,10 +286,10 @@ CREATE TABLE IF NOT EXISTS device_fetch (
   history_days INTEGER,
   status       TEXT,
   n_records    INTEGER,
-  note         TEXT
+  note         TEXT,
+  ext          TEXT CHECK (ext IS NULL OR json_valid(ext))
 );
-
-CREATE VIEW IF NOT EXISTS v_device_day AS
+CREATE VIEW IF NOT EXISTS v_body_device_day AS
 SELECT
   date,
   MAX(CASE WHEN metric = 'resting_hr'  THEN value END) AS resting_hr,
@@ -220,35 +297,17 @@ SELECT
   MAX(CASE WHEN metric = 'sleep_score' THEN value END) AS sleep_score,
   MAX(CASE WHEN metric = 'hrv'         THEN value END) AS hrv_ms,
   MAX(CASE WHEN metric = 'atl'         THEN value END) AS atl,
+  MAX(CASE WHEN metric = 'ctl'         THEN value END) AS ctl,
   MAX(fetched_at) AS fetched_at
-FROM device_daily
+FROM body_device_daily
 GROUP BY date;
-
-CREATE INDEX IF NOT EXISTS idx_device_daily_date ON device_daily(date);
-CREATE INDEX IF NOT EXISTS idx_device_activity_start ON device_activity(started_at_local);
-
-CREATE TABLE IF NOT EXISTS grip (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  date        TEXT NOT NULL,
-  logged_at   TEXT NOT NULL,
-  hand        TEXT NOT NULL,
-  trial       INTEGER,
-  kg          REAL NOT NULL,
-  device      TEXT,
-  protocol    TEXT,
-  measured_at TEXT,
-  source      TEXT,
-  note        TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_grip_date ON grip(date);
-
 CREATE VIEW IF NOT EXISTS v_daily_overview AS
 WITH all_dates AS (
-  SELECT date FROM vitals
+  SELECT date FROM body_vitals
   UNION
-  SELECT date FROM device_daily
+  SELECT date FROM body_device_daily
   UNION
-  SELECT date FROM grip
+  SELECT date FROM body_grip
 ),
 vitals_day AS (
   SELECT
@@ -258,7 +317,7 @@ vitals_day AS (
     MAX(waist_cm)     AS manual_waist_cm,
     MAX(chest_cm)     AS manual_chest_cm,
     MAX(sleep_h)      AS manual_sleep_h
-  FROM vitals
+  FROM body_vitals
   GROUP BY date
 ),
 grip_day AS (
@@ -267,7 +326,7 @@ grip_day AS (
     ROUND(MAX(CASE WHEN hand = 'right' THEN kg END), 2) AS grip_right_best_kg,
     ROUND(MAX(CASE WHEN hand = 'left'  THEN kg END), 2) AS grip_left_best_kg,
     ROUND(AVG(kg), 2)                                   AS grip_mean_kg
-  FROM grip
+  FROM body_grip
   GROUP BY date
 )
 SELECT
@@ -285,11 +344,51 @@ SELECT
   dev.sleep_score AS device_sleep_score,
   dev.hrv_ms      AS device_hrv_ms,
   dev.atl         AS device_atl,
+  dev.ctl         AS device_ctl,
   dev.fetched_at  AS device_fetched_at
 FROM all_dates d
-LEFT JOIN vitals_day   v   ON v.date   = d.date
-LEFT JOIN grip_day     g   ON g.date   = d.date
-LEFT JOIN v_device_day dev ON dev.date = d.date;
+LEFT JOIN vitals_day        v   ON v.date   = d.date
+LEFT JOIN grip_day          g   ON g.date   = d.date
+LEFT JOIN v_body_device_day dev ON dev.date = d.date;
+CREATE VIEW IF NOT EXISTS v_exercise_day AS
+WITH all_dates AS (
+  SELECT date FROM exercise_sessions
+  UNION
+  SELECT substr(started_at_local, 1, 10) FROM exercise_device_sessions
+),
+manual_day AS (
+  SELECT
+    date,
+    COUNT(*)                  AS manual_sessions,
+    GROUP_CONCAT(sport, '、') AS manual_sports,
+    SUM(minutes)              AS manual_minutes
+  FROM exercise_sessions
+  GROUP BY date
+),
+device_day AS (
+  SELECT
+    substr(started_at_local, 1, 10)      AS date,
+    COUNT(*)                             AS device_sessions,
+    GROUP_CONCAT(type, '、')             AS device_types,
+    ROUND(SUM(moving_time_s) / 60.0, 1)  AS device_minutes,
+    ROUND(AVG(avg_hr), 1)                AS device_avg_hr,
+    ROUND(SUM(training_load), 1)         AS device_training_load
+  FROM exercise_device_sessions
+  GROUP BY substr(started_at_local, 1, 10)
+)
+SELECT
+  d.date,
+  m.manual_sessions,
+  m.manual_sports,
+  m.manual_minutes,
+  dev.device_sessions,
+  dev.device_types,
+  dev.device_minutes,
+  dev.device_avg_hr,
+  dev.device_training_load
+FROM all_dates d
+LEFT JOIN manual_day m   ON m.date   = d.date
+LEFT JOIN device_day dev ON dev.date = d.date;
 """
 
 
@@ -304,7 +403,18 @@ def now_utc_iso() -> str:
 def db_path(root: Path) -> Path:
     resolved_root = root.expanduser().resolve()
     system.check_private_path(resolved_root)
-    target = system.safe_relative(resolved_root, DB_RELATIVE.as_posix(), DB_RELATIVE, "记录数据库")
+    rel: Path = DB_RELATIVE
+    cfg_file = system.config_path(resolved_root)
+    if cfg_file.is_file():
+        try:
+            cfg = json.loads(cfg_file.read_text(encoding="utf-8-sig"))
+            if isinstance(cfg, dict) and isinstance(cfg.get("database_path"), str) and cfg["database_path"].strip():
+                rel = Path(cfg["database_path"].strip())
+        except (OSError, ValueError, json.JSONDecodeError):
+            pass
+    elif (resolved_root / "health.db").is_file() and not (resolved_root / DB_RELATIVE).is_file():
+        rel = Path("health.db")
+    target = system.safe_relative(resolved_root, rel.as_posix(), DB_RELATIVE, "记录数据库")
     system.check_private_path(target)
     if target.is_symlink():
         system.stop("拒绝通过文件链接访问个人记录数据库")
@@ -316,24 +426,142 @@ def load_schema_sql() -> str:
     device_sql = REPO_SCHEMA_DIR / "device.sql"
     if health_sql.is_file() and device_sql.is_file():
         raw = health_sql.read_text(encoding="utf-8") + "\n" + device_sql.read_text(encoding="utf-8")
-        # Remove WAL pragma so idle portable directory trees never leave .sqlite3-wal/.sqlite3-shm sidecars.
+        # 去掉 WAL 设置：可移动目录树不能留下 .sqlite3-wal/.sqlite3-shm 残留
         lines = [line for line in raw.splitlines() if "journal_mode" not in line.lower()]
         return "\n".join(lines)
     return FALLBACK_DDL
 
 
+def _table_names(conn: sqlite3.Connection) -> set[str]:
+    rows = conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()
+    return {r[0] for r in rows}
+
+
+def migrate_v1_to_v2(conn: sqlite3.Connection) -> list[str]:
+    """把 v1 旧表名迁移到 v2 三域命名。幂等：已迁移的库重跑为空操作。"""
+    existing = _table_names(conn)
+    if not (set(V1_TABLE_RENAMES) & existing):
+        return []
+
+    # 先删旧视图（SQLite 会在 RENAME 时改写视图定义，必须先删再建）
+    for view in V1_VIEWS_TO_DROP:
+        conn.execute(f"DROP VIEW IF EXISTS {view}")
+
+    migrated: list[str] = []
+    for old, new in V1_TABLE_RENAMES.items():
+        if old in existing and new not in existing:
+            conn.execute(f"ALTER TABLE {old} RENAME TO {new}")
+            migrated.append(f"{old} → {new}")
+            existing.discard(old)
+            existing.add(new)
+
+    for table, columns in V1_COLUMN_RENAMES.items():
+        if table not in existing:
+            continue
+        cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        for old_col, new_col in columns.items():
+            if old_col in cols and new_col not in cols:
+                conn.execute(f"ALTER TABLE {table} RENAME COLUMN {old_col} TO {new_col}")
+                migrated.append(f"{table}.{old_col} → {new_col}")
+
+    for table in sorted(existing & (set(REQUIRED_TABLES))):
+        cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        if "ext" not in cols:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN ext TEXT CHECK (ext IS NULL OR json_valid(ext))")
+
+    if "body_vitals" in existing:
+        expected_cols = [
+            "date", "logged_at", "weight_kg", "body_fat_pct", "visceral",
+            "waist_cm", "chest_cm", "sleep_h", "measured_at", "device", "source", "ext",
+        ]
+        actual_cols = [r[1] for r in conn.execute("PRAGMA table_info(body_vitals)").fetchall()]
+        if actual_cols != expected_cols and set(actual_cols).issubset(set(expected_cols)):
+            conn.execute("ALTER TABLE body_vitals RENAME TO _body_vitals_old")
+            conn.execute(
+                """
+                CREATE TABLE body_vitals (
+                  date          TEXT NOT NULL,
+                  logged_at     TEXT NOT NULL,
+                  weight_kg     REAL,
+                  body_fat_pct  REAL,
+                  visceral      REAL,
+                  waist_cm      REAL,
+                  chest_cm      REAL,
+                  sleep_h       REAL,
+                  measured_at   TEXT,
+                  device        TEXT,
+                  source        TEXT,
+                  ext           TEXT CHECK (ext IS NULL OR json_valid(ext)),
+                  PRIMARY KEY (date, source)
+                )
+                """
+            )
+            common = [c for c in expected_cols if c in actual_cols]
+            col_csv = ", ".join(common)
+            conn.execute(f"INSERT INTO body_vitals ({col_csv}) SELECT {col_csv} FROM _body_vitals_old")
+            conn.execute("DROP TABLE _body_vitals_old")
+            migrated.append("body_vitals: 列顺序已规范化")
+    return migrated
+
+
 def init_db(root: Path) -> Path:
     path = db_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)
-    ddl = load_schema_sql()
+    if path.is_file():
+        probe = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
+        try:
+            needs_backup = bool(set(V1_TABLE_RENAMES) & _table_names(probe))
+        except sqlite3.Error:
+            needs_backup = False
+        finally:
+            probe.close()
+        if needs_backup:
+            backup_dir = path.parent / "backups"
+            backup_dir.mkdir(parents=True, exist_ok=True)
+            stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+            shutil.copy2(path, backup_dir / f"health-v1-before-v2-{stamp}.sqlite3")
     conn = sqlite3.connect(str(path))
     try:
-        conn.executescript(ddl)
+        migrate_v1_to_v2(conn)
+        conn.executescript(load_schema_sql())
+        conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         conn.execute("PRAGMA journal_mode = DELETE;")
         conn.commit()
     finally:
         conn.close()
     return path
+
+
+def migrate_db(root: Path) -> dict[str, Any]:
+    """显式迁移入口：v1 → v2 前先把整库复制到 系统/backups/。"""
+    path = db_path(root)
+    if not path.is_file():
+        return {"ok": True, "migrated": [], "message": "数据库不存在，将在首次写入时按 v2 建库"}
+    uri = f"file:{path.as_posix()}?mode=ro"
+    probe = sqlite3.connect(uri, uri=True)
+    try:
+        needs = bool(set(V1_TABLE_RENAMES) & _table_names(probe))
+    finally:
+        probe.close()
+    if not needs:
+        init_db(root)
+        return {"ok": True, "migrated": [], "message": "已是 v2，无需迁移"}
+
+    backup_dir = path.parent / "backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+    backup = backup_dir / f"health-v1-before-v2-{stamp}.sqlite3"
+    shutil.copy2(path, backup)
+
+    conn = sqlite3.connect(str(path))
+    try:
+        migrated = migrate_v1_to_v2(conn)
+        conn.executescript(load_schema_sql())
+        conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        conn.commit()
+    finally:
+        conn.close()
+    return {"ok": True, "migrated": migrated, "backup": str(backup)}
 
 
 def verify_db_readonly(root: Path) -> list[str]:
@@ -367,16 +595,25 @@ def inspect_db_readonly(root: Path) -> dict[str, Any]:
     uri = f"file:{path.as_posix()}?mode=ro"
     conn = sqlite3.connect(uri, uri=True)
     try:
+        version = conn.execute("PRAGMA user_version").fetchone()[0]
         counts: dict[str, int] = {}
-        for table in ("vitals", "activity", "workout_sets", "intake", "grip", "device_daily", "device_activity"):
+        for table in REQUIRED_TABLES:
             try:
                 row = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()
                 counts[table] = int(row[0]) if row else 0
             except sqlite3.Error:
                 counts[table] = 0
+        by_domain = {
+            "body": sum(counts[t] for t in ("body_vitals", "body_grip", "body_device_daily")),
+            "exercise": sum(counts[t] for t in ("exercise_sessions", "exercise_sets", "exercise_device_sessions")),
+            "diet": sum(counts[t] for t in ("diet_entries", "diet_food_est", "diet_targets")),
+            "meta": sum(counts[t] for t in ("meta_assumptions", "meta_observations", "meta_slots", "meta_coach_log", "meta_device_fetch")),
+        }
         return {
             "initialized": True,
             "path": str(path),
+            "schema_version": version,
+            "domains": by_domain,
             "counts": counts,
         }
     finally:
@@ -390,7 +627,7 @@ def estimate_e1rm(
     rir: float | None = None,
     bodyweight_kg: float | None = None,
 ) -> dict[str, Any]:
-    """Estimate e1RM via Epley formula when reps + RIR <= 12; separate inferred vs measured."""
+    """Epley 估算 e1RM（仅 reps + RIR <= 12）；推断与实测分开标明。"""
     if weight_kg is None or reps is None or reps < 1:
         return {"total_load_kg": None, "e1rm_kg": None, "e1rm_is_inferred": 1}
     total_load = (bodyweight_kg + weight_kg) if bodyweight_kg is not None else weight_kg
@@ -434,6 +671,7 @@ def log_vitals(
     measured_at: str = "morning_fasted",
     device: str | None = None,
     source: str = "manual",
+    ext: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     dt.date.fromisoformat(date)
     path = init_db(root)
@@ -442,24 +680,26 @@ def log_vitals(
     try:
         conn.execute(
             """
-            INSERT INTO vitals (date, logged_at, weight_kg, body_fat_pct, waist_cm, chest_cm, sleep_h, measured_at, device, source)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO body_vitals (date, logged_at, weight_kg, body_fat_pct, waist_cm, chest_cm, sleep_h, measured_at, device, source, ext)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(date, source) DO UPDATE SET
               logged_at = excluded.logged_at,
-              weight_kg = COALESCE(excluded.weight_kg, vitals.weight_kg),
-              body_fat_pct = COALESCE(excluded.body_fat_pct, vitals.body_fat_pct),
-              waist_cm = COALESCE(excluded.waist_cm, vitals.waist_cm),
-              chest_cm = COALESCE(excluded.chest_cm, vitals.chest_cm),
-              sleep_h = COALESCE(excluded.sleep_h, vitals.sleep_h),
-              measured_at = COALESCE(excluded.measured_at, vitals.measured_at),
-              device = COALESCE(excluded.device, vitals.device)
+              weight_kg = COALESCE(excluded.weight_kg, body_vitals.weight_kg),
+              body_fat_pct = COALESCE(excluded.body_fat_pct, body_vitals.body_fat_pct),
+              waist_cm = COALESCE(excluded.waist_cm, body_vitals.waist_cm),
+              chest_cm = COALESCE(excluded.chest_cm, body_vitals.chest_cm),
+              sleep_h = COALESCE(excluded.sleep_h, body_vitals.sleep_h),
+              measured_at = COALESCE(excluded.measured_at, body_vitals.measured_at),
+              device = COALESCE(excluded.device, body_vitals.device),
+              ext = COALESCE(excluded.ext, body_vitals.ext)
             """,
-            (date, logged_at, weight_kg, body_fat_pct, waist_cm, chest_cm, sleep_h, measured_at, device, source),
+            (date, logged_at, weight_kg, body_fat_pct, waist_cm, chest_cm, sleep_h, measured_at, device, source,
+             json.dumps(ext, ensure_ascii=False) if ext else None),
         )
         conn.commit()
     finally:
         conn.close()
-    return {"ok": True, "table": "vitals", "date": date, "source": source, "logged_at": logged_at}
+    return {"ok": True, "table": "body_vitals", "date": date, "source": source, "logged_at": logged_at}
 
 
 def log_grip(
@@ -480,18 +720,19 @@ def log_grip(
     logged_at = now_local_str()
     conn = sqlite3.connect(str(path))
     try:
+        ext_json = json.dumps({"note": note}, ensure_ascii=False) if note else None
         cur = conn.execute(
             """
-            INSERT INTO grip (date, logged_at, hand, trial, kg, device, protocol, measured_at, source, note)
+            INSERT INTO body_grip (date, logged_at, hand, trial, kg, device, protocol, measured_at, source, ext)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'manual', ?)
             """,
-            (date, logged_at, hand, trial, kg, device, protocol, measured_at, note),
+            (date, logged_at, hand, trial, kg, device, protocol, measured_at, ext_json),
         )
         conn.commit()
         row_id = cur.lastrowid
     finally:
         conn.close()
-    return {"ok": True, "table": "grip", "id": row_id, "date": date, "hand": hand, "kg": kg}
+    return {"ok": True, "table": "body_grip", "id": row_id, "date": date, "hand": hand, "kg": kg}
 
 
 def log_workout(
@@ -512,12 +753,12 @@ def log_workout(
     try:
         cur = conn.execute(
             """
-            INSERT INTO activity (date, logged_at, sport, detail, minutes, sets, reported_tod, source)
+            INSERT INTO exercise_sessions (date, logged_at, sport, detail, minutes, sets, reported_tod, source)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (date, logged_at, sport, detail, minutes, len(sets_data) if sets_data else None, reported_tod, source),
         )
-        activity_id = cur.lastrowid
+        session_id = cur.lastrowid
         inserted_sets = 0
         for idx, item in enumerate(sets_data, start=1):
             exercise = str(item.get("exercise") or "").strip()
@@ -534,14 +775,14 @@ def log_workout(
             calc = estimate_e1rm(weight_kg, reps, rpe=rpe, rir=rir, bodyweight_kg=bodyweight_kg)
             conn.execute(
                 """
-                INSERT INTO workout_sets (
-                  activity_id, date, logged_at, exercise, pattern_group, role, set_index,
+                INSERT INTO exercise_sets (
+                  session_id, date, logged_at, exercise, pattern_group, role, set_index,
                   weight_kg, bodyweight_kg, total_load_kg, reps, rpe, rir, rest_sec,
                   e1rm_kg, e1rm_is_inferred, quality_note, pain_flag, source
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    activity_id,
+                    session_id,
                     date,
                     logged_at,
                     exercise,
@@ -566,7 +807,7 @@ def log_workout(
         conn.commit()
     finally:
         conn.close()
-    return {"ok": True, "activity_id": activity_id, "sets_logged": inserted_sets, "date": date, "logged_at": logged_at}
+    return {"ok": True, "activity_id": session_id, "sets_logged": inserted_sets, "date": date, "logged_at": logged_at}
 
 
 def log_intake(
@@ -588,7 +829,7 @@ def log_intake(
     try:
         cur = conn.execute(
             """
-            INSERT INTO intake (date, logged_at, meal, kcal, protein_g, carb_g, fat_g, items, is_training_day, source)
+            INSERT INTO diet_entries (date, logged_at, meal, kcal, protein_g, carb_g, fat_g, items, is_training_day, source)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (date, logged_at, meal, kcal, protein_g, carb_g, fat_g, items, is_training_day, source),
@@ -597,7 +838,44 @@ def log_intake(
         row_id = cur.lastrowid
     finally:
         conn.close()
-    return {"ok": True, "table": "intake", "id": row_id, "date": date, "meal": meal, "kcal": kcal}
+    return {"ok": True, "table": "diet_entries", "id": row_id, "date": date, "meal": meal, "kcal": kcal}
+
+
+def log_custom(
+    root: Path,
+    date: str,
+    kind: str,
+    value_num: float | None = None,
+    value_text: str | None = None,
+    unit: str | None = None,
+    domain: str | None = None,
+    source: str = "manual",
+    ext: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """万能扩展入口：任何尚未建模的记录类型先进 meta_observations。"""
+    dt.date.fromisoformat(date)
+    kind = kind.strip()
+    if not kind:
+        raise ValueError("kind 不能为空（同一类记录用同一个词）")
+    if domain is not None and domain not in ("body", "exercise", "diet", "meta"):
+        raise ValueError("domain 必须是 body / exercise / diet / meta")
+    path = init_db(root)
+    logged_at = now_local_str()
+    conn = sqlite3.connect(str(path))
+    try:
+        cur = conn.execute(
+            """
+            INSERT INTO meta_observations (date, logged_at, domain, kind, value_num, value_text, unit, source, ext)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (date, logged_at, domain, kind, value_num, value_text, unit, source,
+             json.dumps(ext, ensure_ascii=False) if ext else None),
+        )
+        conn.commit()
+        row_id = cur.lastrowid
+    finally:
+        conn.close()
+    return {"ok": True, "table": "meta_observations", "id": row_id, "date": date, "kind": kind}
 
 
 def ingest_device_payloads(
@@ -607,7 +885,7 @@ def ingest_device_payloads(
     wellness_payload: dict[str, Any] | None = None,
     activities_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Persist read-only VitalDock JSON payloads into device_* tables without touching manual tables."""
+    """把只读 VitalDock JSON 落进设备表；不触碰手记表。metric 词表开放，未知数值指标透传。"""
     path = init_db(root)
     fetched_at = now_utc_iso()
     daily_upserted = 0
@@ -624,21 +902,23 @@ def ingest_device_payloads(
                     continue
                 upstream_updated = str(rec.get("updated") or rec.get("upstream_updated") or "") or None
                 metrics_map = rec.get("metrics") if isinstance(rec.get("metrics"), dict) else rec
-                for metric, unit in (
-                    ("resting_hr", "bpm"),
-                    ("sleep_secs", "s"),
-                    ("sleep_score", "score"),
-                    ("ctl", "load"),
-                    ("atl", "load"),
-                    ("hrv", "ms"),
-                    ("hrv_sdnn", "ms"),
-                ):
+                seen: set[str] = set()
+                candidates: list[tuple[str, str]] = list(KNOWN_DEVICE_METRICS)
+                for key, value in metrics_map.items():
+                    if key in {m for m, _ in KNOWN_DEVICE_METRICS} or key in ("date", "id", "updated", "upstream_updated"):
+                        continue
+                    if isinstance(value, (int, float)) and not isinstance(value, bool):
+                        candidates.append((key, ""))
+                for metric, unit in candidates:
+                    if metric in seen:
+                        continue
+                    seen.add(metric)
                     val = metrics_map.get(metric)
                     if val is None or isinstance(val, bool):
                         continue
                     conn.execute(
                         """
-                        INSERT INTO device_daily (date, metric, value, unit, source, upstream_updated, fetched_at)
+                        INSERT INTO body_device_daily (date, metric, value, unit, source, upstream_updated, fetched_at)
                         VALUES (?, ?, ?, ?, 'intervals_wellness_merged', ?, ?)
                         ON CONFLICT(date, metric) DO UPDATE SET
                           value = excluded.value,
@@ -646,12 +926,12 @@ def ingest_device_payloads(
                           upstream_updated = excluded.upstream_updated,
                           fetched_at = excluded.fetched_at
                         """,
-                        (rec_date, metric, float(val), unit, upstream_updated, fetched_at),
+                        (rec_date, metric, float(val), unit or None, upstream_updated, fetched_at),
                     )
                     daily_upserted += 1
             conn.execute(
                 """
-                INSERT INTO device_fetch (fetched_at, tool, day, history_days, status, n_records)
+                INSERT INTO meta_device_fetch (fetched_at, tool, day, history_days, status, n_records)
                 VALUES (?, 'wellness_context', ?, ?, ?, ?)
                 """,
                 (fetched_at, day, history_days, wellness_payload.get("status"), daily_upserted),
@@ -667,7 +947,7 @@ def ingest_device_payloads(
                     continue
                 conn.execute(
                     """
-                    INSERT INTO device_activity (
+                    INSERT INTO exercise_device_sessions (
                       activity_id, source, type, started_at_utc, started_at_local, finished_at_utc,
                       moving_time_s, elapsed_time_s, distance_m, avg_hr, max_hr, elevation_m,
                       training_load, platform_synced_at, fetched_at
@@ -705,7 +985,7 @@ def ingest_device_payloads(
                 activities_upserted += 1
             conn.execute(
                 """
-                INSERT INTO device_fetch (fetched_at, tool, day, history_days, status, n_records)
+                INSERT INTO meta_device_fetch (fetched_at, tool, day, history_days, status, n_records)
                 VALUES (?, 'recent_activities', ?, ?, ?, ?)
                 """,
                 (fetched_at, day, history_days, activities_payload.get("status"), activities_upserted),
@@ -725,14 +1005,11 @@ def compute_readiness(
     overview_rows: list[dict[str, Any]],
     recent_sets: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Evaluate multi-signal readiness relative to personal rolling baseline.
+    """多信号准备度：个人滚动基线（前 4..28 天）对照最近 1..3 天。
 
-    Rules:
-    - Personal rolling baseline (prior 4..28 days) vs recent window (last 1..3 days).
-    - Single-metric non-dictatorship: a single-day isolated device fluctuation stays 'green'
-      (with warmup verification note) to avoid nocebo load reduction.
-    - 'yellow' requires >=2 coupled recovery signals over recent days (or 1 persistent signal + performance drift).
-    - 'red' requires persistent multi-signal deviation (>=4 days) or coupled pain/repeated performance drop.
+    - 单指标不独裁（反 nocebo）：单日单指标波动保持 green，用热身组现场核实；
+    - yellow 需要 ≥2 项指标连续偏离（或 1 项持续 + 表现漂移）；
+    - red 需要多维持续偏离（≥4 天级）或疼痛/连续表现下滑。
     """
     sorted_rows = sorted(overview_rows, key=lambda r: str(r.get("date") or ""))
     if not sorted_rows:
@@ -764,7 +1041,7 @@ def compute_readiness(
     multi_day_flags = 0
     single_day_flags = 0
 
-    # 1. HRV relative to personal rolling baseline
+    # 1. HRV 对照个人滚动基线（无 HRV 数据源时该信号自动缺席）
     recent_hrv = [float(r["device_hrv_ms"]) for r in recent if r.get("device_hrv_ms") is not None]
     if hrv_base and hrv_base > 0 and recent_hrv:
         threshold = min(hrv_base * 0.90, hrv_base - (hrv_sd or 0.0))
@@ -784,7 +1061,7 @@ def compute_readiness(
                 "detail": f"单日 HRV 低于个人基线（{recent_hrv[-1]:.1f} vs 基线 {hrv_base:.1f} ms）",
             })
 
-    # 2. Resting HR relative to personal rolling baseline
+    # 2. 静息心率对照个人滚动基线
     recent_rhr = [float(r["device_resting_hr"]) for r in recent if r.get("device_resting_hr") is not None]
     if rhr_base and recent_rhr:
         high_days = sum(1 for v in recent_rhr if v >= rhr_base + 4.0)
@@ -803,7 +1080,7 @@ def compute_readiness(
                 "detail": f"单日静息心率高于个人基线（{recent_rhr[-1]:.1f} vs 基线 {rhr_base:.1f} bpm）",
             })
 
-    # 3. Morning Grip relative to personal rolling baseline
+    # 3. 晨起握力对照个人滚动基线
     recent_grip = [float(r["grip_mean_kg"]) for r in recent if r.get("grip_mean_kg") is not None]
     if grip_base and grip_base > 0 and recent_grip:
         low_grip_days = sum(1 for v in recent_grip if v <= grip_base * 0.93)
@@ -822,7 +1099,7 @@ def compute_readiness(
                 "detail": f"单日晨起握力较个人基线下降（{recent_grip[-1]:.1f} vs 基线 {grip_base:.1f} kg）",
             })
 
-    # 4. Sleep duration (manual and device checked side-by-side without overwriting)
+    # 4. 睡眠时长（手记与设备并排核对，取两者更差值，不合并覆盖）
     short_sleep_days = 0
     for r in recent:
         m_sleep = r.get("manual_sleep_h")
@@ -845,7 +1122,7 @@ def compute_readiness(
             "detail": "近 3 天内有 1 天睡眠不足 6 小时",
         })
 
-    # 5. Pain or high-RPE performance drift in recent workout sets
+    # 5. 近期逐组记录的疼痛标记与 RPE 漂移
     recent_sets = recent_sets or []
     pain_sets = sum(1 for s in recent_sets if s.get("pain_flag"))
     overshoot_sets = sum(1 for s in recent_sets if s.get("rpe") is not None and float(s["rpe"]) >= 9.5 and s.get("role") != "top")
@@ -863,7 +1140,7 @@ def compute_readiness(
             "detail": f"近期非顶组出现 {overshoot_sets} 组 RPE ≥ 9.5 的疲劳漂移",
         })
 
-    # Triage decision
+    # 分流
     if pain_sets > 0 or multi_day_flags >= 3:
         status = "red"
         recommendation = "多维恢复指标持续偏离个人基线或存在疼痛信号：建议暂停高强度推进，优先评估提前减量周（Deload）或降级接回。"
@@ -911,13 +1188,20 @@ def query_context(root: Path, days: int = 14) -> dict[str, Any]:
             ).fetchall()
         ]
         overview_recent = [r for r in overview_all if str(r.get("date") or "") >= cutoff_recent]
+        exercise_recent = [
+            dict(row)
+            for row in conn.execute(
+                "SELECT * FROM v_exercise_day WHERE date >= ? ORDER BY date ASC",
+                (cutoff_recent,),
+            ).fetchall()
+        ]
         recent_sets = [
             dict(row)
             for row in conn.execute(
                 """
                 SELECT date, exercise, pattern_group, role, set_index, weight_kg, bodyweight_kg,
                        total_load_kg, reps, rpe, rir, rest_sec, e1rm_kg, e1rm_is_inferred, quality_note, pain_flag
-                FROM workout_sets
+                FROM exercise_sets
                 WHERE date >= ?
                 ORDER BY date DESC, id ASC
                 LIMIT 100
@@ -935,7 +1219,7 @@ def query_context(root: Path, days: int = 14) -> dict[str, Any]:
                        ROUND(SUM(carb_g), 1) AS total_carb_g,
                        ROUND(SUM(fat_g), 1) AS total_fat_g,
                        COUNT(*) AS meal_count
-                FROM intake
+                FROM diet_entries
                 WHERE date >= ?
                 GROUP BY date
                 ORDER BY date ASC
@@ -952,6 +1236,7 @@ def query_context(root: Path, days: int = 14) -> dict[str, Any]:
         "initialized": True,
         "window_days": days,
         "daily_overview": overview_recent,
+        "exercise_overview": exercise_recent,
         "readiness": readiness,
         "recent_workout_sets": recent_sets,
         "daily_intake": daily_intake,
@@ -959,26 +1244,31 @@ def query_context(root: Path, days: int = 14) -> dict[str, Any]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Keshig SQLite 记录库管理与并排对照工具")
+    parser = argparse.ArgumentParser(description="Keshig 统一记录库：身体/运动/饮食三域，手记与设备分表并排")
     subs = parser.add_subparsers(dest="command", required=True)
 
     p_init = subs.add_parser("init")
-    p_init.add_argument("--root", required=True)
+    p_init.add_argument("--root", default=None)
 
-    p_vitals = subs.add_parser("log-vitals")
-    p_vitals.add_argument("--root", required=True)
-    p_vitals.add_argument("--date", default=dt.date.today().isoformat())
-    p_vitals.add_argument("--weight-kg", type=float)
-    p_vitals.add_argument("--body-fat-pct", type=float)
-    p_vitals.add_argument("--waist-cm", type=float)
-    p_vitals.add_argument("--chest-cm", type=float)
-    p_vitals.add_argument("--sleep-h", type=float)
-    p_vitals.add_argument("--measured-at", default="morning_fasted")
-    p_vitals.add_argument("--device")
-    p_vitals.add_argument("--source", default="manual")
+    p_migrate = subs.add_parser("migrate")
+    p_migrate.add_argument("--root", default=None)
+
+    for cmd_name in ("log-vitals", "body"):
+        p_vitals = subs.add_parser(cmd_name)
+        p_vitals.add_argument("--root", default=None)
+        p_vitals.add_argument("--date", default=dt.date.today().isoformat())
+        p_vitals.add_argument("--weight-kg", type=float)
+        p_vitals.add_argument("--body-fat-pct", type=float)
+        p_vitals.add_argument("--waist-cm", type=float)
+        p_vitals.add_argument("--chest-cm", type=float)
+        p_vitals.add_argument("--sleep-h", type=float)
+        p_vitals.add_argument("--measured-at", default="morning_fasted")
+        p_vitals.add_argument("--device")
+        p_vitals.add_argument("--source", default="manual")
+        p_vitals.add_argument("--ext-json", help="扩展字段 JSON 对象")
 
     p_grip = subs.add_parser("log-grip")
-    p_grip.add_argument("--root", required=True)
+    p_grip.add_argument("--root", default=None)
     p_grip.add_argument("--date", default=dt.date.today().isoformat())
     p_grip.add_argument("--hand", choices=("right", "left"), required=True)
     p_grip.add_argument("--kg", type=float, required=True)
@@ -988,46 +1278,62 @@ def main(argv: list[str] | None = None) -> int:
     p_grip.add_argument("--measured-at", default="morning")
     p_grip.add_argument("--note")
 
-    p_workout = subs.add_parser("log-workout")
-    p_workout.add_argument("--root", required=True)
-    p_workout.add_argument("--date", default=dt.date.today().isoformat())
-    p_workout.add_argument("--sport", default="力量")
-    p_workout.add_argument("--detail")
-    p_workout.add_argument("--minutes", type=int)
-    p_workout.add_argument("--reported-tod")
-    p_workout.add_argument("--sets-json", help="JSON array of set objects")
+    for cmd_name in ("log-workout", "exercise"):
+        p_workout = subs.add_parser(cmd_name)
+        p_workout.add_argument("--root", default=None)
+        p_workout.add_argument("--date", default=dt.date.today().isoformat())
+        p_workout.add_argument("--sport", default="力量")
+        p_workout.add_argument("--detail")
+        p_workout.add_argument("--minutes", type=int)
+        p_workout.add_argument("--reported-tod")
+        p_workout.add_argument("--sets-json", help="JSON array of set objects")
 
-    p_intake = subs.add_parser("log-intake")
-    p_intake.add_argument("--root", required=True)
-    p_intake.add_argument("--date", default=dt.date.today().isoformat())
-    p_intake.add_argument("--meal", required=True)
-    p_intake.add_argument("--kcal", type=float, required=True)
-    p_intake.add_argument("--protein-g", type=float)
-    p_intake.add_argument("--carb-g", type=float)
-    p_intake.add_argument("--fat-g", type=float)
-    p_intake.add_argument("--items")
-    p_intake.add_argument("--is-training-day", type=int, choices=(0, 1))
+    for cmd_name in ("log-intake", "diet"):
+        p_intake = subs.add_parser(cmd_name)
+        p_intake.add_argument("--root", default=None)
+        p_intake.add_argument("--date", default=dt.date.today().isoformat())
+        p_intake.add_argument("--meal", required=True)
+        p_intake.add_argument("--kcal", type=float, required=True)
+        p_intake.add_argument("--protein-g", type=float)
+        p_intake.add_argument("--carb-g", type=float)
+        p_intake.add_argument("--fat-g", type=float)
+        p_intake.add_argument("--items")
+        p_intake.add_argument("--is-training-day", type=int, choices=(0, 1))
+
+    for cmd_name in ("log-custom", "meta"):
+        p_custom = subs.add_parser(cmd_name)
+        p_custom.add_argument("--root", default=None)
+        p_custom.add_argument("--date", default=dt.date.today().isoformat())
+        p_custom.add_argument("--kind", required=True, help="记录类型词，同类记录用同一个词，如 fatigue_score")
+        p_custom.add_argument("--value-num", type=float)
+        p_custom.add_argument("--value-text")
+        p_custom.add_argument("--unit")
+        p_custom.add_argument("--domain", choices=("body", "exercise", "diet", "meta"))
+        p_custom.add_argument("--ext-json", help="扩展字段 JSON 对象")
 
     p_sync = subs.add_parser("sync-device")
-    p_sync.add_argument("--root", required=True)
+    p_sync.add_argument("--root", default=None)
     p_sync.add_argument("--day", default=dt.date.today().isoformat())
     p_sync.add_argument("--history-days", type=int, default=28)
     p_sync.add_argument("--limit", type=int, default=20)
     p_sync.add_argument("--timeout", type=float, default=120)
 
     p_query = subs.add_parser("query-context")
-    p_query.add_argument("--root", required=True)
+    p_query.add_argument("--root", default=None)
     p_query.add_argument("--days", type=int, default=14)
 
     args = parser.parse_args(argv)
-    root = Path(args.root).expanduser().resolve()
+    root = system.resolve_root(args.root)
     system.load_config_readonly(root)
 
     if args.command == "init":
         path = init_db(root)
-        print(json.dumps({"ok": True, "db_path": str(path)}, ensure_ascii=False, indent=2))
+        print(json.dumps({"ok": True, "db_path": str(path), "schema_version": SCHEMA_VERSION}, ensure_ascii=False, indent=2))
         return 0
-    if args.command == "log-vitals":
+    if args.command == "migrate":
+        print(json.dumps(migrate_db(root), ensure_ascii=False, indent=2))
+        return 0
+    if args.command in ("log-vitals", "body"):
         res = log_vitals(
             root,
             args.date,
@@ -1039,6 +1345,7 @@ def main(argv: list[str] | None = None) -> int:
             measured_at=args.measured_at,
             device=args.device,
             source=args.source,
+            ext=json.loads(args.ext_json) if args.ext_json else None,
         )
         print(json.dumps(res, ensure_ascii=False, indent=2))
         return 0
@@ -1056,7 +1363,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(json.dumps(res, ensure_ascii=False, indent=2))
         return 0
-    if args.command == "log-workout":
+    if args.command in ("log-workout", "exercise"):
         sets_data = json.loads(args.sets_json) if args.sets_json else []
         res = log_workout(
             root,
@@ -1069,7 +1376,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(json.dumps(res, ensure_ascii=False, indent=2))
         return 0
-    if args.command == "log-intake":
+    if args.command in ("log-intake", "diet"):
         res = log_intake(
             root,
             args.date,
@@ -1080,6 +1387,19 @@ def main(argv: list[str] | None = None) -> int:
             fat_g=args.fat_g,
             items=args.items,
             is_training_day=args.is_training_day,
+        )
+        print(json.dumps(res, ensure_ascii=False, indent=2))
+        return 0
+    if args.command in ("log-custom", "meta"):
+        res = log_custom(
+            root,
+            args.date,
+            args.kind,
+            value_num=args.value_num,
+            value_text=args.value_text,
+            unit=args.unit,
+            domain=args.domain,
+            ext=json.loads(args.ext_json) if args.ext_json else None,
         )
         print(json.dumps(res, ensure_ascii=False, indent=2))
         return 0

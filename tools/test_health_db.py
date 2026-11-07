@@ -6,6 +6,7 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -117,6 +118,18 @@ def test_health_db_and_readiness() -> None:
         )
         assert w_res["sets_logged"] == 3
 
+        # Log an extensible custom observation into meta_observations.
+        obs_res = health_db.log_custom(
+            root,
+            workout_day,
+            "soreness_pectoral",
+            value_num=2.0,
+            unit="1-10",
+            domain="body",
+            ext={"side": "both"},
+        )
+        assert obs_res["ok"] is True and obs_res["table"] == "meta_observations"
+
         # Green baseline: manual and device metrics side-by-side, not merged.
         ctx = health_db.query_context(root, days=14)
         assert ctx["readiness"]["status"] == "green", ctx["readiness"]
@@ -125,6 +138,9 @@ def test_health_db_and_readiness() -> None:
         assert latest["device_sleep_h"] == 7.6
         assert latest["device_hrv_ms"] == 68.0
         assert latest["grip_right_best_kg"] == 54.0
+        ex_day = [r for r in ctx["exercise_overview"] if r["date"] == workout_day][0]
+        assert ex_day["manual_minutes"] == 60
+        assert ex_day["device_minutes"] == 60.0
         top_set = [s for s in ctx["recent_workout_sets"] if s["role"] == "top"][0]
         assert top_set["e1rm_is_inferred"] == 1
         assert top_set["e1rm_kg"] is not None and top_set["e1rm_kg"] > 85.0
@@ -155,24 +171,71 @@ def test_health_db_and_readiness() -> None:
         assert "device_hrv_ms" in flagged_metrics and "device_resting_hr" in flagged_metrics
 
         # doctor / validate / inspect stay read-only and pass on a healthy system.
+        sub_env = {**os.environ, "PYTHONUTF8": "1", "PYTHONDONTWRITEBYTECODE": "1"}
         for cmd in ("doctor", "validate"):
             proc = subprocess.run(
                 [sys.executable, "-I", str(TRAINING_SYSTEM_SCRIPT), cmd, "--root", str(root)],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
+                env=sub_env,
             )
             assert proc.returncode == 0, f"{cmd} failed: {proc.stdout}\n{proc.stderr}"
         proc = subprocess.run(
             [sys.executable, "-I", str(TRAINING_SYSTEM_SCRIPT), "inspect", "--root", str(root)],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=sub_env,
         )
         assert proc.returncode == 0, f"inspect failed: {proc.stderr}"
         summary = json.loads(proc.stdout)
         assert summary["database"]["initialized"] is True
-        assert summary["database"]["counts"]["workout_sets"] == 3
-        assert summary["database"]["counts"]["device_daily"] > 0
+        assert summary["database"]["schema_version"] == 2
+        assert summary["database"]["counts"]["exercise_sets"] == 3
+        assert summary["database"]["counts"]["body_device_daily"] > 0
+        assert summary["database"]["counts"]["meta_observations"] == 1
+        assert summary["database"]["domains"]["body"] > 0
         assert not (root / "系统" / "health.sqlite3-wal").exists(), "inspection must not create WAL sidecars"
+
+        # Test v1 -> v2 automatic migration and existing health.db adoption in <agent_root>/data.
+        import sqlite3
+        data_dir = Path(tmp) / "agent-data"
+        data_dir.mkdir(parents=True)
+        legacy_db = data_dir / "health.db"
+        conn = sqlite3.connect(str(legacy_db))
+        conn.executescript(
+            """
+            CREATE TABLE vitals (
+              date TEXT NOT NULL, logged_at TEXT NOT NULL, weight_kg REAL, body_fat_pct REAL,
+              visceral REAL, waist_cm REAL, sleep_h REAL, measured_at TEXT, device TEXT, source TEXT,
+              chest_cm REAL, PRIMARY KEY (date, source)
+            );
+            INSERT INTO vitals VALUES ('2026-10-20', '2026-10-20 08:00:00', 76.2, 22.0, NULL, 91.0, 7.2, 'morning_fasted', 'scale', 'manual', 100.0);
+            CREATE TABLE activity (
+              id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, logged_at TEXT NOT NULL,
+              sport TEXT NOT NULL, detail TEXT, minutes INTEGER, load_kg REAL, sets INTEGER, reps INTEGER,
+              witness INTEGER, slot_id INTEGER, reported_tod TEXT, source TEXT
+            );
+            INSERT INTO activity (date, logged_at, sport, detail, minutes, source) VALUES ('2026-10-20', '2026-10-20 20:00:00', '力量', '卧推 60kg 4x8', 60, 'manual');
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        proc_adopt = subprocess.run(
+            [sys.executable, "-I", str(TRAINING_SYSTEM_SCRIPT), "bootstrap", "--target", str(data_dir)],
+            capture_output=True,
+            text=True,
+        )
+        assert proc_adopt.returncode == 0, f"adopt bootstrap failed: {proc_adopt.stdout}\n{proc_adopt.stderr}"
+        assert health_db.db_path(data_dir) == legacy_db.resolve()
+        info = health_db.inspect_db_readonly(data_dir)
+        assert info["schema_version"] == 2
+        assert info["counts"]["body_vitals"] == 1
+        assert info["counts"]["exercise_sessions"] == 1
 
 
 def test_plan_cycle_and_review_validators() -> None:

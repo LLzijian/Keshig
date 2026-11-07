@@ -102,7 +102,7 @@ JSON 是状态与文字计划的唯一数据源。先验证 JSON，再据此写�
   "id": "daily_steps",
   "label": "日均步数",
   "kind": "daily_steps",
-  "source": "health_db.device_daily.steps",
+  "source": "health_db.body_device_daily.steps",
   "status": "needs_baseline",
   "next_action": "先记录 7 天步数，再由 AI 确认下一阶段目标。"
 }

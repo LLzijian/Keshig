@@ -7,7 +7,7 @@
 [![Checks](https://github.com/LLzijian/Keshig/actions/workflows/check.yml/badge.svg?branch=main)](https://github.com/LLzijian/Keshig/actions/workflows/check.yml)
 [![Version](https://img.shields.io/badge/version-0.4.0-orange)](keshig.manifest.json)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](docs/beginner-guide.md)
-[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![License](https://img.shields.io/badge/license-PolyForm--NC_1.0.0-orange)](LICENSE)
 
 *An agent-native operating system for training & nutrition: methodology, records and device data live in one repo — every interaction happens in conversation, personal data never leaves your own machine.*
 
@@ -110,15 +110,14 @@ Agent 按[完整接入流程](skills/training-system/references/device-setup.md)
 
 为什么设备值与手记分表：同一天两条来源会各说各的时长（人记 60 min vs 设备 3020 s），自动合并等于替用户裁决。对照就放在查询里并排看。
 
-## 🗄️ 记录结构
+## 🗄️ 记录结构（三域统一 Schema v2）
 
-`schema/health.sql` + `schema/device.sql` 是记录库 DDL，落点为个人系统内的 `系统/health.sqlite3`。通则：
+`schema/health.sql` + `schema/device.sql` 定义三域记录库（默认位于 `<agent_root>/data/health.db` 或 `<个人系统目录>/系统/health.sqlite3`）：
 
-- 时间戳一律取落库时的机器值，不是用户输入的钟点。
-- 除 `date`／`sport` 外字段一律可空（八段锦、走路这种没有设备、时长、对手）。
-- 用户报的时段原词单独一列原样存（`reported_tod`），不换算、不参与判定。
-- 摄入只存结构化值（kcal／蛋白／碳水／脂肪），不存原话副本。
-- 力量训练逐组落 `workout_sets`（顶组/回退/工作组、逐组 RPE/RIR、总系统负荷、e1RM 推断标记）。
+- **身体域 `body_*`**：`body_vitals`（体重/体脂/围度/手记睡眠）、`body_grip`（晨起握力）与 `body_device_daily`（VitalDock 开放指标词表），通过 `v_daily_overview` 并排对照。
+- **运动域 `exercise_*`**：`exercise_sessions`（训练场次）、`exercise_sets`（逐组力量：顶组/回退/工作组、RPE/RIR、总系统负荷、e1RM 推断标记）与 `exercise_device_sessions`（设备运动），通过 `v_exercise_day` 并排对照。
+- **饮食域 `diet_*`**：`diet_entries`（已确认餐次）、`diet_food_est`（食物估值库）、`diet_targets`（计划书日型目标）。
+- **跨域与开放扩展 `meta_*`**：每张表均带 `ext` JSON 扩展列；尚未专门建模的新数据类型直接写入 `meta_observations`（`domain` + `kind` + `value_num`/`value_text` + `unit`），无需频繁改动表结构。
 
 ## 📚 文档
 
@@ -141,6 +140,7 @@ Agent 按[完整接入流程](skills/training-system/references/device-setup.md)
 
 ## 📄 许可
 
-Keshig MIT。上游材料按各自许可保留，见 [`NOTICE.md`](NOTICE.md) 与 `licenses/`。
+Keshig 采用 [PolyForm Noncommercial 1.0.0](LICENSE)：**仅限非商业使用**（个人使用、学习、研究、公益与政府机构使用均允许；商业利用不在授权范围内）。
+上游材料按各自许可保留，见 [`NOTICE.md`](NOTICE.md) 与 `licenses/`。
 `skills/expert-tanchengyi/` 是基于公开言论的推断框架，非本人观点、非本人授权。
 训练有风险，本仓库内容不构成医疗建议。

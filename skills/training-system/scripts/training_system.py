@@ -53,10 +53,45 @@ REQUIRED_DIRS = (
 )
 HERE = Path(__file__).resolve().parent
 SKILL_ROOT = HERE.parent.parent
+ADOPTABLE_DATA_ENTRIES = {
+    "health.db",
+    "health.db-wal",
+    "health.db-shm",
+    "health.db-journal",
+    "sheet_mirror.json",
+    "schema.sql",
+    "schema_device.sql",
+    "backups",
+}
 
 
 def stop(message: str) -> None:
     raise SystemExit("training_system: FAIL\n- " + message)
+
+
+def default_data_root() -> Path | None:
+    """Resolve the default personal data root (<agent_root>/data) when running from an installed Skill."""
+    for env_key in ("KESHIG_FITNESS_HOME", "KESHIG_DATA_ROOT"):
+        env_val = os.environ.get(env_key, "").strip()
+        if env_val:
+            return Path(env_val).expanduser().resolve()
+    agent_root = SKILL_ROOT.parent.resolve()
+    if (agent_root / "keshig.manifest.json").is_file() or (agent_root / "SKILL.md").is_file():
+        return None
+    for parent in (agent_root, *agent_root.parents):
+        if (parent / "keshig.manifest.json").is_file() or (parent / "SKILL.md").is_file():
+            return None
+    return agent_root / "data"
+
+
+def resolve_root(raw: str | None, flag: str = "--root") -> Path:
+    if raw and str(raw).strip():
+        return Path(raw).expanduser().resolve()
+    default = default_data_root()
+    if default is not None:
+        return default
+    stop(f"未指定 {flag}，且当前处于源码树内无法使用默认 <agent_root>/data；请显式传入 {flag}")
+    raise AssertionError("unreachable")
 
 
 def check_private_path(path: Path) -> Path:
@@ -240,8 +275,16 @@ def backup_path(root: Path, config: dict) -> Path:
 
 
 def ensure_empty(target: Path) -> None:
-    if target.exists() and any(target.iterdir()):
-        stop("bootstrap 只允许空目录，拒绝覆盖已有内容：" + str(target))
+    if not target.exists():
+        return
+    entries = [p.name for p in target.iterdir()]
+    if not entries:
+        return
+    if (target / "系统" / "keshig-system.json").exists() or (target / "INDEX.md").exists():
+        stop("目标目录已初始化 Keshig 系统，请用 doctor / upgrade 或 --root：" + str(target))
+    non_adoptable = [name for name in entries if name not in ADOPTABLE_DATA_ENTRIES]
+    if non_adoptable:
+        stop("bootstrap 只允许空目录或仅含现有 health.db 的数据目录，拒绝覆盖已有内容：" + str(target))
 
 
 def installed_skills() -> Path:
@@ -251,10 +294,11 @@ def installed_skills() -> Path:
 
 
 def bootstrap(args: argparse.Namespace) -> None:
-    root = Path(args.target).resolve()
+    root = resolve_root(getattr(args, "target", None), "--target")
     check_data_paths(root)
     ensure_empty(root)
     root.mkdir(parents=True, exist_ok=True)
+    adopted_existing_db = (root / "health.db").is_file()
 
     for relative in REQUIRED_DIRS:
         (root / relative).mkdir(parents=True, exist_ok=True)
@@ -305,6 +349,7 @@ def bootstrap(args: argparse.Namespace) -> None:
         "project_root": PROJECT_RELATIVE.as_posix(),
         "skills_root": RUNTIME_SKILLS,
         "backup_root": BACKUP_RELATIVE.as_posix(),
+        "database_path": "health.db" if adopted_existing_db else "系统/health.sqlite3",
         "portable_config_version": PORTABLE_CONFIG_VERSION,
         "output_locations": OUTPUT_LOCATIONS,
         "created_at": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
@@ -315,6 +360,8 @@ def bootstrap(args: argparse.Namespace) -> None:
     }
     write_json(config_path(root), config)
     import health_db
+    if adopted_existing_db:
+        health_db.migrate_db(root)
     health_db.init_db(root)
     print("training_system: PASS")
     print("mode: 待建档；请完成问诊后再生成正式计划")
@@ -322,7 +369,7 @@ def bootstrap(args: argparse.Namespace) -> None:
 
 
 def doctor(args: argparse.Namespace) -> None:
-    root = Path(args.root).resolve()
+    root = resolve_root(getattr(args, "root", None))
     config = load_config(root)
     problems: list[str] = []
 
@@ -370,7 +417,7 @@ def _listed(directory: Path, pattern: str, limit: int = 20) -> list[str]:
 
 def inspect_system(args: argparse.Namespace) -> None:
     """Print a compact summary of the current system without loading计划正文."""
-    root = Path(args.root).resolve()
+    root = resolve_root(getattr(args, "root", None))
     config = load_config_readonly(root)
     locations = config.get("output_locations") or {}
 
@@ -397,7 +444,7 @@ def inspect_system(args: argparse.Namespace) -> None:
 
 
 def install_skill(args: argparse.Namespace) -> None:
-    root = Path(args.root).resolve()
+    root = resolve_root(getattr(args, "root", None))
     load_config(root)
     name = args.name
     source = installed_skills() / name
@@ -408,7 +455,7 @@ def install_skill(args: argparse.Namespace) -> None:
 
 
 def import_private_pack(args: argparse.Namespace) -> None:
-    root = Path(args.root).resolve()
+    root = resolve_root(getattr(args, "root", None))
     config = load_config(root)
     source = Path(args.source).resolve()
     if not source.is_dir():
@@ -424,7 +471,7 @@ def import_private_pack(args: argparse.Namespace) -> None:
 
 
 def upgrade(args: argparse.Namespace) -> None:
-    root = Path(args.root).resolve()
+    root = resolve_root(getattr(args, "root", None))
     config = load_config(root)
     config["suite_version"] = SUITE_VERSION
     write_json(config_path(root), config)
@@ -437,7 +484,7 @@ def upgrade(args: argparse.Namespace) -> None:
 
 
 def validate_system(args: argparse.Namespace) -> None:
-    root = Path(args.root).resolve()
+    root = resolve_root(getattr(args, "root", None))
     config = load_config_readonly(root)
     problems: list[str] = []
 
@@ -470,33 +517,33 @@ def main() -> None:
     subs = parser.add_subparsers(dest="command", required=True)
 
     p = subs.add_parser("bootstrap")
-    p.add_argument("--target", required=True)
+    p.add_argument("--target", default=None, help="个人数据目录（默认 <agent_root>/data）")
     p.set_defaults(func=bootstrap)
 
     p = subs.add_parser("doctor")
-    p.add_argument("--root", required=True)
+    p.add_argument("--root", default=None, help="个人数据目录（默认 <agent_root>/data）")
     p.set_defaults(func=doctor)
 
     p = subs.add_parser("inspect")
-    p.add_argument("--root", required=True)
+    p.add_argument("--root", default=None, help="个人数据目录（默认 <agent_root>/data）")
     p.set_defaults(func=inspect_system)
 
     p = subs.add_parser("upgrade")
-    p.add_argument("--root", required=True)
+    p.add_argument("--root", default=None, help="个人数据目录（默认 <agent_root>/data）")
     p.set_defaults(func=upgrade)
 
     p = subs.add_parser("install-skill")
-    p.add_argument("--root", required=True)
+    p.add_argument("--root", default=None, help="个人数据目录（默认 <agent_root>/data）")
     p.add_argument("--name", required=True)
     p.set_defaults(func=install_skill)
 
     p = subs.add_parser("import-private-pack")
-    p.add_argument("--root", required=True)
+    p.add_argument("--root", default=None, help="个人数据目录（默认 <agent_root>/data）")
     p.add_argument("--source", required=True)
     p.set_defaults(func=import_private_pack)
 
     p = subs.add_parser("validate")
-    p.add_argument("--root", required=True)
+    p.add_argument("--root", default=None, help="个人数据目录（默认 <agent_root>/data）")
     p.set_defaults(func=validate_system)
 
     p = subs.add_parser("check-path")
@@ -504,10 +551,10 @@ def main() -> None:
     p.set_defaults(func=lambda args: print("private_path: PASS " + str(check_private_path(Path(args.path)))))
 
     p = subs.add_parser("db-init")
-    p.add_argument("--root", required=True)
+    p.add_argument("--root", default=None, help="个人数据目录（默认 <agent_root>/data）")
 
     def _db_init(args: argparse.Namespace) -> None:
-        root = Path(args.root).resolve()
+        root = resolve_root(getattr(args, "root", None))
         load_config_readonly(root)
         import health_db
         path = health_db.init_db(root)
