@@ -11,15 +11,16 @@ Keshig（怯薛）是一套装进用户自己 Agent 的私人教练系统：**�
 - 需要有人替他把「今天练什么、吃多少、这次练得怎么样、停了两周怎么回来」讲清楚；
 - 不需要一个替他训练或替他坚持的产品。
 
-## 能力来自三部分
+## 能力来源
 
 | 来源 | 提供什么 | 在 Keshig 中的形态 |
 |---|---|---|
 | 用户自己的 `LLzijian/vitaldock` | 华为手环 → Intervals.icu 的只读设备数据（睡眠、静息心率、HRV、步数、运动记录） | `device/` 适配器，子进程只读调用，可选 |
 | [`LZheng0411/Lzheng-fitness`](https://github.com/LZheng0411/Lzheng-fitness) | 训练计划、力量周期、训练复盘、停训接回、营养系统、视频学习的方法论与 Skill | `skills/`、`knowledge/` |
 | [`superj0107/tanchengyi-perspective`](https://github.com/superj0107/tanchengyi-perspective) | 谭成义视角的训练判断框架（动作质量、频率、渐进、反焦虑） | `skills/expert-tanchengyi/`、`skills/training-expert-library/` |
+| [`LLzijian/video-reader-mcp`](https://github.com/LLzijian/video-reader-mcp) | Bilibili/抖音视频的带时间戳逐字稿、关键帧画面与 MP4 片段导出 | 用户 Agent 配置中的 MCP 工具，可选，由 `video-learning` 调用（[接入指南](../skills/video-learning/references/video-reader-setup.md)）；本仓库不分发、不复制其实现 |
 
-三部分可以只启用一部分。没有设备数据，训练与营养系统照常运行；不想用专家视角，不影响基础计划。
+各来源可以只启用一部分。没有设备数据，训练与营养系统照常运行；没有 video-reader，视频学习退回纯文字流程；不想用专家视角，不影响基础计划。
 
 ## 安装后 Agent 必须做的事
 
@@ -33,12 +34,12 @@ Keshig（怯薛）是一套装进用户自己 Agent 的私人教练系统：**�
 | 3. 补充咨询 | 建档信息不足 | 按谭成义等专家经验，只问会改变计划的项；用普通语言解释 RPE、RIR、工作组等术语；不制造焦虑 | 问答 | `expert-tanchengyi`、`training-expert-library` |
 | 4. 负荷校准 | 没有可靠动作重量 | 给试重步骤与合格标准，不猜重量、不测极限 | 执行基准 | `fitness-plan` |
 | 5. 第一版计划 | 关键信息确认 | 先展示依据与差异，再写 Markdown 计划书与 JSON 状态 | 计划书、当前计划、执行基准 | `fitness-plan` |
-| 6. 每日处方 | 「今天练什么」 | 读当前计划与近期复盘，给动作、重量、组次、休息、时间不足版、停止条件 | 对话输出 | `fitness-plan` |
+| 6. 每日处方 | 「今天练什么」 | 读当前计划与近期复盘，给动作、重量、组次、休息、时间不足版、停止条件 | 对话输出（动作在库时附示范片段指引） | `fitness-plan` |
 | 7. 单次/周复盘 | 「练完了」「复盘这周」 | 区分事实与推断；给下一次明确处方；写入复盘并更新索引 | 复盘 Markdown、索引 | `strength-training-review` |
 | 8. 停训接回 | 停训 7 天、连续漏练 3 次 | 判断恢复权限，给正常/降级/最低三档与未来 7 天 | 接回卡、状态档案 | `training-return` |
 | 9. 力量专项 | 「我想提高卧推」 | 检查与当前计划的冲突；先展示差异，确认后生成周期 | 周期 JSON 与 Markdown | `strength-cycle-planner` |
 | 10. 饮食 | 建档、报餐、两周趋势 | 先定方法与日型目标；餐食候选必须用户确认才入账；不按单次训练消耗补吃 | 营养契约与记录 | `nutrition-system` |
-| 11. 学习 | 「学这个视频」 | 核对来源，区分元数据/转写/核对/应用；个人资料不进公共包 | 学习笔记 | `video-learning`、`douyin-question-distiller` |
+| 11. 学习 | 「学这个视频」「把这个动作收进动作库」 | 核对来源，区分元数据/转写/核对/应用；动作视频经 video-reader 核对画面、与用户确认时间段后导出示范片段，写入动作库；个人资料不进公共包 | 学习笔记、动作库条目与示范片段 | `video-learning`、`douyin-question-distiller` |
 
 ## 产品原则
 
@@ -58,12 +59,13 @@ Keshig（怯薛）是一套装进用户自己 Agent 的私人教练系统：**�
 | 设备原始数据 | 上游 VitalDock 与 Intervals.icu | 否，只读子进程调用 |
 | API key、token、凭据 | 用户本机凭据管理器或本地配置 | 否，任何情况下不提交 |
 | 餐食照片、私人知识包 | 用户自己的资料目录 | 否，默认不导出 |
+| 动作库与示范片段 | 用户本机系统目录（`个人训练系统/动作库`） | 否，片段含平台版权内容，只在用户本机使用、不再分发 |
 
 源码目录、安装后的 Skill 与个人系统必须分开，程序拒绝在源码或整个技能目录内建立个人系统。所有正式输出、数据库、照片、缓存、设备环境和备份遵守该边界；开发、自己使用和发布的操作见 [开发指南](DEVELOPMENT.md)。
 
 个人记录本地保存并不表示所有数据处理都在本机。设备链路经过华为与 Intervals.icu；云端 Agent 可能把对话和工具结果交给模型服务。首次设备接入时说明这些去向，密钥由用户在本机隐藏输入。
 
-仓库对上游设备桥 **只读**：只调它的 CLI、读 stdout，不 import 源码、不写其目录。
+仓库对上游设备桥 **只读**：只调它的 CLI、读 stdout，不 import 源码、不写其目录。video-reader-mcp 同样是独立上游项目：仓库只声明如何调用它的 MCP 工具，不分发、不复制其实现。
 
 ## 非目标
 
