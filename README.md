@@ -128,6 +128,8 @@ Agent 按[完整接入流程](skills/training-system/references/device-setup.md)
 - [开发、自己使用与发布](docs/DEVELOPMENT.md)
 - [验证范围](docs/VALIDATION.md)
 - [贡献与仓库约定](AGENTS.md)
+- [贡献指南](CONTRIBUTING.md)
+- [更新日志](CHANGELOG.md)
 - [来源与许可](NOTICE.md)
 
 ## 🔒 隐私

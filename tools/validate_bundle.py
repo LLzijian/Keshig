@@ -105,6 +105,8 @@ def validate_links() -> None:
         ROOT / "README.md",
         ROOT / "AGENTS.md",
         ROOT / "SYSTEM-FLOW.md",
+        ROOT / "CONTRIBUTING.md",
+        ROOT / "CHANGELOG.md",
         *sorted((ROOT / "docs").glob("*.md")),
         *sorted((ROOT / "knowledge").glob("*.md")),
         *sorted(SKILLS_ROOT.glob("*/SKILL.md")),

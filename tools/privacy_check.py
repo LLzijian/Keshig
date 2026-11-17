@@ -14,7 +14,7 @@ from install import is_reparse_point
 
 ROOT = Path(__file__).resolve().parents[1]
 PUBLIC_DIRS = {"skills", "knowledge", "device", "schema", "tools", "docs", "examples", "licenses", "third_party", ".github", ".githooks"}
-PUBLIC_FILES = {".gitignore", ".gitattributes", "AGENTS.md", "README.md", "LICENSE", "NOTICE.md", "THIRD-PARTY-NOTICES.md", "SYSTEM-FLOW.md", "keshig.manifest.json"}
+PUBLIC_FILES = {".gitignore", ".gitattributes", "AGENTS.md", "CHANGELOG.md", "CONTRIBUTING.md", "LICENSE", "NOTICE.md", "README.md", "SYSTEM-FLOW.md", "THIRD-PARTY-NOTICES.md", "keshig.manifest.json"}
 TEXT_SUFFIXES = {".md", ".json", ".yaml", ".yml", ".py", ".ps1", ".sh", ".sql", ".txt", ".toml"}
 PRIVATE_DIRS = {"系统", "个人训练系统", "健身知识库", "profiles", "plans", "reviews", "handoffs", "runtime", "data", "backups", ".fitness", ".venv", "node_modules", "__pycache__"}
 PATTERNS = {
